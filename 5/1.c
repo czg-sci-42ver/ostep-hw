@@ -11,6 +11,7 @@ int main() {
     fprintf(stderr, "fork failed\n");
     exit(EXIT_FAILURE);
   } else if (rc == 0) {
+    printf("x in child process before changing: %d\n", x);
     x = 101;
     printf("x in child process: %d\n", x);
   } else {

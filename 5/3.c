@@ -18,6 +18,9 @@ static void sig_handler() { sigflag = 1; }
 static void wait_with_signal() {
   printf("wait with signal\n");
   struct sigaction act;
+  /*
+  This is similar to what csapp instructs. 
+  */
   act.sa_handler = sig_handler;
   sigemptyset(&act.sa_mask);
   act.sa_flags = 0;
@@ -27,6 +30,11 @@ static void wait_with_signal() {
   sigset_t cont_mask, old_mask;
   sigemptyset(&cont_mask);
   sigaddset(&cont_mask, SIGUSR1);
+  /*
+  block to ensure `while (sigflag == 0)` will always work
+  See https://www.gnu.org/software/libc/manual/html_node/Why-Block.html#:~:text=24.7.,later%2C%20after%20you%20unblock%20them.
+  > The only way to test reliably for whether a signal has yet arrived is to test while the signal is blocked.
+  */
   if (sigprocmask(SIG_BLOCK, &cont_mask, &old_mask) == -1)
     errExit("sigprocmask");
 
@@ -46,6 +54,13 @@ static void wait_with_signal() {
 // APUE 15.2
 static void wait_with_pipe() {
   printf("wait with pipe\n");
+  /*
+  See "(see pipe(7))" in `man 2 pipe`
+  Then 
+  > If all file descriptors referring to the write end of a pipe have been closed, then an attempt to read(2) from the pipe will see end-of-file (read(2) ...
+  > An application that uses pipe(2) and fork(2) should use suitable  close(2)  calls  to
+  >     close unnecessary duplicate file descriptors;
+  */
   int pipefd[2];
   if (pipe(pipefd) == -1)
     errExit("pipe");
@@ -61,6 +76,11 @@ static void wait_with_pipe() {
   } else {
     close(pipefd[1]);
     char c;
+    /*
+    from `man 2 read`:
+    EAGAIN The  file  descriptor fd refers to a file other than a socket and has been marked nonblocking (O_NONBLOCK), and the read would block.
+    implies blocking (Also see "EWOULDBLOCK" in `man 3 errno`)
+    */
     read(pipefd[0], &c, 1); // block
     close(pipefd[0]);
     printf("goodbye\n");
@@ -68,6 +88,7 @@ static void wait_with_pipe() {
 }
 
 _Noreturn static void usage(char *name) {
+// static void usage(char *name) {
   fprintf(stderr, "Usage: %s [-s|--signal] [-p|--pipe]\n", name);
   exit(EXIT_FAILURE);
 }

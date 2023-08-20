@@ -6,6 +6,7 @@ all: $(TARGETS)
 
 %.out: %.c
 	$(CC) $^ -o $@ $(CFLAGS)
+	@echo $(CC) $^ -o $@ $(CFLAGS)
 
 clean:
 	rm -f ./*.out

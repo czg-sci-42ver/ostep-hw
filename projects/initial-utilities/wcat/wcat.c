@@ -20,7 +20,7 @@ main(int argc, char *argv[])
         }
 
         while (fgets(buff, BUFFER_SIZE, fp))
-            printf("%s", buff);
+            printf("line: %s", buff);
 
         errno = 0;
         if (fclose(fp) != 0) {
@@ -29,7 +29,7 @@ main(int argc, char *argv[])
         }
     }
 
-    fclose(fp);
+    // fclose(fp);
 
     return 0;
 }
