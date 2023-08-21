@@ -18,6 +18,10 @@ for i in range(30):
         clock = 0
         finishTime = []
         r = int(random.random() * 1000001)
+        """
+        1. random stride because here tickets are same.
+        2. the "100" caused the 100 inflection point.
+        """
         stride = int(r % 100)
         # run jobs
         for k in range(runTotal):
@@ -30,7 +34,10 @@ for i in range(30):
             else:
                 # run job 1
                 (wjob, wrun, wpass) = jobList[1]
-
+            """
+            the following is similar to lottery except that `tickTotal` needs here because `stride` is always same
+            chosen randomly.
+            """
             # now do the accounting
             if wrun >= quantum:
                 wrun -= quantum

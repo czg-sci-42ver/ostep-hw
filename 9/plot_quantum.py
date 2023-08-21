@@ -10,8 +10,10 @@ uList = [0] * 100
 for i in range(30):
     random.seed(i)
 
+    # 1~100
     for quantum in range(1, 101):
         tickTotal = 200
+        # 100+100
         runTotal = 200
         jobs = 2
         jobList = [[0, 100, 100], [1, 100, 100]]
@@ -20,6 +22,7 @@ for i in range(30):
         finishTime = []
         # run jobs
         for k in range(runTotal):
+            # TODO why use this random by `* 1000001`
             r = int(random.random() * 1000001)
             winner = int(r % tickTotal)
 
@@ -53,10 +56,12 @@ for i in range(30):
                 break
 
         u = round(finishTime[0] / finishTime[1], 2)
+        # print(finishTime[1],finishTime[0],u)
         uList[quantum - 1] += u
 
 fig = plt.figure()
 x = np.linspace(1, 100, 100)
+# because `for i in range(30):`
 plt.plot(x, [u / 30 for u in uList], color='orange')
 plt.ylim(0, 1)
 plt.margins(0)

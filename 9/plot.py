@@ -1,5 +1,9 @@
 #! /usr/bin/env python3
 
+"""
+This is similar to "plot_quantum.py" but using jobLength as the loop variable.
+"""
+
 import random
 
 import matplotlib.pyplot as plt
