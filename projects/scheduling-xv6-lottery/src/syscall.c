@@ -106,6 +106,10 @@ extern int sys_uptime(void);
 extern int sys_settickets(void);
 extern int sys_getpinfo(void);
 
+/*
+[SYS_fork] is to control the array order
+func pointer array: https://stackoverflow.com/a/14071430/21294350
+*/
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
 [SYS_exit]    sys_exit,
