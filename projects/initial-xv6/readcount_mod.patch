@@ -7,7 +7,7 @@ index 09d790c..dec662a 100644
  
  # Cross-compiling (e.g., on Mac OS X)
 -# TOOLPREFIX = i386-jos-elf
-+TOOLPREFIX =
++TOOLPREFIX = i386-elf-
  
  # Using native tools (e.g., on X86 Linux)
  #TOOLPREFIX = 
