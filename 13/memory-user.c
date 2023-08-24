@@ -30,5 +30,8 @@ int main(int argc, char *argv[])
     }
 
     free(arr);
+    #ifdef DANGLING_POINTER
+    arr[0]=1;
+    #endif
     return 0;
 }
