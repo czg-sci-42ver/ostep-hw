@@ -6,6 +6,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 asize = 1024
+"""
+1. Here bounds -> the whole physical address space.
+> with limit values rang-ing from 0 up to the maximum size of the address space.
+See the following `limit`.
+2. random.random() -> floating.
+"""
 psize = 16 * 1024
 uList = [0] * psize
 

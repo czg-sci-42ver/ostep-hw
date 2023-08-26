@@ -18,6 +18,9 @@ void vector_insertAtEnd(struct vector * v, int value) {
 
 void vector_deleteAtEnd(struct vector * v) {
     (v->data)[--(v->size)] = 0;
+    /*
+    Keep the 1:2 ratio.
+    */
     if (v->size == (int)(v->capacity / 4)) {
         v->capacity = (int)(v->capacity / 2);
         v->data = (int *) realloc(v->data, v->capacity * sizeof(int));

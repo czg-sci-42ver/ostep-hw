@@ -27,3 +27,5 @@
 
 # lame file
 .DS_Store
+
+*.png

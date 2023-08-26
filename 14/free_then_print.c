@@ -3,8 +3,14 @@
 
 int main(int argc, char *argv[]) {
     int *data = (int *) malloc(100);
-    // free(data);
+    #ifdef PROBLEM_6
+    free(data);
+    #endif
+    #ifndef PROBLEM_6
     free(&data[1]);
-    // printf("%d\n", data[0]);
+    #endif
+    #ifdef PROBLEM_6
+    printf("%d\n", data[0]);
+    #endif
     return 0;
 }

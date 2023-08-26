@@ -25,6 +25,12 @@ int main(int argc, char *argv[]) {
   }
   int *a = calloc(pages, PAGESIZE);
   struct timespec start, end;
+  /*
+  See https://stackoverflow.com/questions/69099750/what-is-the-precision-of-the-gettimeofday-function#comment122127005_69099750
+  for why use `clock_gettime`.
+  `man 2 clock_gettime`
+  > Its time represents seconds and nanoseconds since the Epoch.
+  */
   if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start) == -1)
     handle_error("clock_gettime");
 
