@@ -5,6 +5,9 @@ vpnFile = open('./vpn.txt', 'w')
 
 for line in traceFile:
     if (not line.startswith('=')):
+        """
+        https://stackoverflow.com/a/12672012/21294350 pagesize -> 4096
+        """
         vpnFile.write(str((int("0x" + line[3:11], 16) & 0xfffff000) >> 12) + "\n")
 
 traceFile.close()

@@ -16,12 +16,15 @@ while(1):
             count[n] += 1
         else:
             count[n] = 1
-
+    # https://docs.python.org/3/howto/sorting.html
     sortedCount = sorted(count.items(), key=itemgetter(1), reverse=True)
     countSum = 0
     for k in range(int(0.2 * numaddrs)):
         countSum += sortedCount[k][1]
 
+    """
+    To imply the locality
+    """
     if countSum / numaddrs >= 0.8:
         break
     else:
