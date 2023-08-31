@@ -4,7 +4,7 @@ traceFile = open('./ls-trace.txt', 'r')
 vpnFile = open('./vpn.txt', 'w')
 
 for line in traceFile:
-    if (not line.startswith('=')):
+    if (not line.startswith('=')) and (' ' in line):
         """
         https://stackoverflow.com/a/12672012/21294350 pagesize -> 4096
         """
