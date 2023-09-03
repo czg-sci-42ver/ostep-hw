@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <sys/time.h>
 #include <sched.h>
+#include <x86intrin.h>
 
 #define USE_RDTSC
 /*
@@ -12,9 +13,38 @@ https://stackoverflow.com/a/13772771/21294350 from https://stackoverflow.com/pos
 This is also the example of gcc doc https://gcc.gnu.org/onlinedocs/gcc/Machine-Constraints.html.
 */
 #include <stdint.h>
-uint64_t rdtsc(){
+/*
+https://stackoverflow.com/a/48394316/21294350 and [Benchmark_IA_64]
+`gcc -I /usr/lib/modules/6.4.12-arch1-1/build/arch/x86/include /usr/lib/modules/6.4.12-arch1-1/build/include 1.c -o 1.out`
+can't be used when
+```bash
+$ sudo find / -name "preempt.h"                                                                                       
+find: ‘/proc/1419/task/1419/net’: Invalid argument
+find: ‘/proc/1419/net’: Invalid argument
+/usr/lib/modules/6.4.12-arch1-1/build/arch/x86/include/asm/preempt.h
+/usr/lib/modules/6.4.12-arch1-1/build/include/asm-generic/preempt.h
+/usr/lib/modules/6.4.12-arch1-1/build/include/linux/preempt.h
+...
+```
+*/
+// #include <linux/preempt.h>
+// #include <linux/irqflags.h>
+static inline uint64_t rdtsc(){
     unsigned int lo,hi;
+    /*
+    1. if only check the execution time but not effects of "loads and stores", no need `sfence`
+    2. Also see C29 description and https://stackoverflow.com/a/51907627/21294350.
+    3. notice the overheads of fence and rdtsc, if just comparison, we can ignore the overheads
+    4. compared with [Benchmark_IA_64] 3.2.2, here we will take the ending _mm_lfence() in the 1st call of 
+    `rdtsc` and the starting _mm_lfence() in the 2rd call of `rdtsc` in account, 
+    but it will keep "the variance of variances and the variance of the minimum values" 0
+    because it avoids reorder -> no dynamic measure.
+        So it can conform the low value in 3.3.1
+    */
+    // preempt_disable();
+    _mm_lfence();
     __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+    _mm_lfence();
     return ((uint64_t)hi << 32) | lo;
 }
 
@@ -28,6 +58,8 @@ main(int argc, char *argv[]) {
     */
     struct timeval start, end;
     #ifdef USE_RDTSC
+    for (int i=0;i<4;i++)
+        rdtsc(); // warm-up as [Benchmark_IA_64] does.
     uint64_t start_cycle=rdtsc(),end_cycle;
     #else
     gettimeofday(&start, NULL);

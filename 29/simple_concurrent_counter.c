@@ -17,7 +17,9 @@
 #include <stdlib.h>   // malloc, free
 #include <sys/time.h> // gettimeofday
 #include <unistd.h>   // sysconf
+#ifndef ONE_MILLION
 #define ONE_MILLION 1000000
+#endif
 
 typedef struct __counter_t {
   pthread_mutex_t lock;
@@ -67,10 +69,19 @@ int main(int argc, char *argv[]) {
   int cpus = (int)sysconf(_SC_NPROCESSORS_ONLN), s;
   if (cpus == -1)
     handle_error_en(cpus, "sysconf");
-
+  #ifdef USE_ONCE_MANY_THREADS
+  for (int i = cpus; i <= cpus; i++) {
+    for (int l = 1; l <= cpus; l++) {
+  #elif USE_MORE_THAN_PHYSICAL_THREADS
+  for (int i = 1; i <= cpus; i++) {
+    for (int l = cpus*2; l <= cpus*2; l++) {
+  #else
   for (int i = 1; i <= cpus; i++) {
     for (int l = 1; l <= cpus; l++) {
+  #endif
       thread_info_t *tinfo = malloc((size_t)l * sizeof(thread_info_t));
+      // printf("thread_info_t: %ld\nsizeof(pthread_mutex_t): %ld\nsizeof(counter_t *):%ld\n",\
+      // sizeof(thread_info_t),sizeof(pthread_mutex_t),sizeof(counter_t *));
       if (tinfo == NULL)
         handle_error_en(errno, "malloc");
       struct timeval start, end;
@@ -95,6 +106,7 @@ int main(int argc, char *argv[]) {
 
       long long startusec, endusec;
       startusec = start.tv_sec * ONE_MILLION + start.tv_usec;
+      // printf("%ld sec: %ld\n",start.tv_usec,start.tv_sec);
       endusec = end.tv_sec * ONE_MILLION + end.tv_usec;
       printf("%d cpus, %d threads\n", i, l);
       printf("global count: %d\n", get(counter));

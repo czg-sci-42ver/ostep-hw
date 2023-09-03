@@ -6,8 +6,16 @@
 #ifdef FreeBSD
 #include <malloc_np.h>
 #endif
-#define NUMCPUS 4
+#define NUMCPUS 16
+#ifndef ONE_MILLION
 #define ONE_MILLION 1000000
+#endif
+// `math.log(1e+6,2)=19.931568569324174`
+#ifndef MAX_THREASHOLD_EXP
+#define MAX_THREASHOLD_EXP 20
+#endif
+
+#define BEST_EXP 18
 
 typedef struct __counter_t {
   pthread_mutex_t glock;          // global lock
@@ -21,6 +29,9 @@ typedef struct __myarg_t {
   counter_t *c;
   int threshold;
   int amt;
+  /*
+  This isn't used.
+  */
   int threads;
   char pad[sizeof(counter_t *) - sizeof(int)];
 } myarg_t;
@@ -62,6 +73,10 @@ static int get(counter_t *c) {
   return val; // only approximate!
 }
 
+/*
+The above functions are from the book.
+*/
+
 static void *thread_function(void *arg) {
   myarg_t *m = (myarg_t *)arg;
   pthread_t threadID = pthread_self();
@@ -71,9 +86,17 @@ static void *thread_function(void *arg) {
 }
 
 int main(int argc, char *argv[]) {
-  for (int i = 0; i < 11; i++) {
+  #ifdef ONE_THRESHOLD
+  for (int i = BEST_EXP; i <= BEST_EXP; i++) {
+  #else
+  for (int i = 0; i < MAX_THREASHOLD_EXP; i++) {
+  #endif
     double threshold = pow(2.0, (double)i);
+    #ifdef COMPARE_THRESHOLD
+    for (int j = NUMCPUS; j <= NUMCPUS; j++) {
+    #else
     for (int j = 1; j <= NUMCPUS; j++) {
+    #endif
       counter_t *c = malloc(sizeof(counter_t));
       if (c == NULL)
         handle_error_en(errno, "malloc");
@@ -90,6 +113,9 @@ int main(int argc, char *argv[]) {
       int s = 0;
       s = gettimeofday(&start, NULL);
       if (s != 0)
+      /*
+      Here always set errno to solve with the general conditions.
+      */
         handle_error_en(s, "gettimeofday");
       for (int k = 0; k < j; k++)
         Pthread_create(&threads[k], NULL, &thread_function, &args);
