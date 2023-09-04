@@ -7,8 +7,8 @@ all: approximate_counter.out queue.out simple_counter.out \
 	standard_list.out hand_over_hand.out btree.out \
 	approximate_counter_comparison.out simple_counter_comparison.out \
 	approximate_counter_check_threashold.out \
-	btree_before_more_mod.out \
 	btree_1.out
+#	btree_before_more_mod.out
 
 approximate_counter.out: approximate_counter.c
 	$(CC) -o $@ $^ $(CFLAGS) -lm $(OSFLAG)

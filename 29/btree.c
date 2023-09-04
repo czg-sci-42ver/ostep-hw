@@ -378,8 +378,11 @@ static insert_ret *insert(node_t *h, char *key, char *val, int ht) {
   Here `h->m < M` always holds,
   */
   // entry_t* old_entry = h->children[h->m];
-  free(h->children[h->m]);
-  insert_node: for (int i = h->m; i > j; i--)
+  /*
+  Notice here `free` needs be after `insert_node:` to take the special case "goto insert_node;" in account.
+  */
+  insert_node: free(h->children[h->m]);
+  for (int i = h->m; i > j; i--)
     h->children[i] = h->children[i - 1];
   h->children[j] = t;
   h->m++;
@@ -491,6 +494,8 @@ int main(int argc, char *argv[]) {
      77 ==50038==    by 0x10975C: initBtree (btree.c:127)
      78 ==50038==    by 0x10933B: main (btree.c:450)
     """
+
+    fixed: See above "free(h->children[h->m]);"
     */
     free_node(btree->root);
     free(btree);
