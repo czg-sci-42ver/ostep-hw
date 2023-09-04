@@ -47,6 +47,10 @@ static int List_Lookup(list_t *L, int key) {
   while (curr) {
     if (curr->key == key) {
       rv = 0;
+      /*
+      From the book, we only need to ensure `Pthread_mutex_unlock` not related with 
+      the memory operation error
+      */
       Pthread_mutex_unlock(&curr->lock);
       break;
     }
@@ -82,10 +86,15 @@ static void List_Free(list_t *L) {
   while (curr) {
     node_t *tempNode = curr;
     curr = curr->next;
-    if (curr)
-      Pthread_mutex_lock(&curr->lock);
+    /*
+    unlock immediately after finish using the node.
+    this is one trade-off between whether getting the lock quickly to help proceeding
+    and unlocking to help others proceeding.
+    */
     Pthread_mutex_unlock(&tempNode->lock);
     free(tempNode);
+    if (curr)
+      Pthread_mutex_lock(&curr->lock);
   }
   free(L);
 }

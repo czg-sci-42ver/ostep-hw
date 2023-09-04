@@ -80,8 +80,8 @@ int main(int argc, char *argv[]) {
     for (int l = 1; l <= cpus; l++) {
   #endif
       thread_info_t *tinfo = malloc((size_t)l * sizeof(thread_info_t));
-      // printf("thread_info_t: %ld\nsizeof(pthread_mutex_t): %ld\nsizeof(counter_t *):%ld\n",\
-      // sizeof(thread_info_t),sizeof(pthread_mutex_t),sizeof(counter_t *));
+      printf("thread_info_t: %ld\nsizeof(pthread_mutex_t): %ld\nsizeof(counter_t *):%ld\n",\
+      sizeof(thread_info_t),sizeof(pthread_mutex_t),sizeof(counter_t *));
       if (tinfo == NULL)
         handle_error_en(errno, "malloc");
       struct timeval start, end;
