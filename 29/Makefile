@@ -7,7 +7,8 @@ all: approximate_counter.out queue.out simple_counter.out \
 	standard_list.out hand_over_hand.out btree.out \
 	approximate_counter_comparison.out simple_counter_comparison.out \
 	approximate_counter_check_threashold.out \
-	btree_1.out
+	btree_1.out \
+	btree_debug_apple_in_amazon.out
 #	btree_before_more_mod.out
 
 approximate_counter.out: approximate_counter.c
@@ -37,6 +38,9 @@ hand_over_hand.out: hand-over-hand-locking-list.c
 
 btree.out: btree.c
 	$(CC) -o $@ $^ $(CFLAGS) -g
+
+btree_debug_apple_in_amazon.out: btree.c
+	$(CC) -o $@ $^ $(CFLAGS) -g -DDEBUG_APPLE_IN_AMAZON=1
 
 btree_1.out: btree.c
 	$(CC) -o $@ $^ $(CFLAGS) -g -DTHREAD_NUM=1

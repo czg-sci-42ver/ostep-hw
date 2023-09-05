@@ -53,7 +53,9 @@ maybe output
 """
 this is due to the write order.
 */
+#ifndef DEBUG_APPLE_IN_AMAZON
 #define DEBUG_APPLE_IN_AMAZON 0
+#endif
 
 /*
 http://www.btechsmartclass.com/data_structures/tree-terminology.html
@@ -66,6 +68,34 @@ and only the bottom level page table has many `val`s
 root -> {"aaa","bbb"}
 "aaa" -> {"aaa","aab"}
 "bbb" -> {"bbb","bbc"}
+
+4. more detailed btree architecture See "toStringHelper"
+"""
+(www.amazon.com)
+     (www.amazon.com)
+          (www.amazon.com)
+               (www.amazon.com)
+                    (www.amazon.com)
+                         www.amazon.com 128.112.136.12
+                         www.amazon.com 128.112.136.12
+                    (www.amazon.com)
+                         www.amazon.com 128.112.136.12
+                         www.amazon.com 128.112.136.12
+               (www.amazon.com)
+                    (www.amazon.com)
+                         www.amazon.com 128.112.136.12
+                         www.amazon.com 128.112.136.12
+                    (www.amazon.com)
+                         www.amazon.com 128.112.136.12
+                         www.amazon.com 128.112.136.12
+                    (www.amazon.com)
+                         www.amazon.com 128.112.136.12
+                         www.apple.com 128.112.136.12
+"""
+a. here the root key "(www.amazon.com)" is changed by "mod_parent"
+b. "www.apple.com" in "www.amazon.com", View "./btree_debug_apple_in_amazon.out"
+c. "(www.amazon.com)" created by something like `initEntry(btree->root->children[0]->key, NULL, btree->root)`
+has `next` variable which points to the next node
 */
 // internal nodes: only use key and next
 // external nodes: only use key and value
@@ -82,6 +112,12 @@ typedef struct __node_t {
   entry_t *children[M]; // the array of children
 } node_t;
 
+/*
+here height is 0 at init,
+and the height is the tree/subtree's height.
+notice here tree is only one (so only one lock each tree) and the subtree is created in mind but not in the program 
+(it is controlled by the height and 0 means the leaf node).
+*/
 typedef struct __btree_t {
   node_t *root; // root of the B-tree
   int height;   // height of the B-tree
@@ -94,6 +130,10 @@ typedef struct __myarg_t {
   int threads;
   char pad[sizeof(btree_t *) - sizeof(int)];
 } myarg_t;
+
+/*
+Notice the `initNode` mallocs M entries always, so take care when free.
+*/
 
 static entry_t *initEntry(char *key, char *val, node_t *next) {
   entry_t *new = malloc(sizeof(entry_t));
@@ -128,12 +168,18 @@ static btree_t *initBtree() {
   Pthread_mutex_init(&new->lock, NULL);
   return new;
 }
+
+/*
+1. set mod_parent (`ret->mod_parent =1;`) when it is less than all leaf children 
+and update the parent key recursively (`h->children[j-1]->key = key;`).
+2. `ret_node` is what returned by `static node_t *insert` in the original code.
+*/
+
 typedef struct __insert_ret{
   node_t * ret_node;
   int mod_parent;
 } insert_ret;
 
-// static char *search(node_t *x, char *key, int ht);
 static insert_ret *insert(node_t *h, char *key, char *val, int ht);
 static node_t *split(node_t *h);
 static char *toStringHelper(node_t *h, int ht, char *indent);
@@ -145,35 +191,37 @@ static char *toStringHelper(node_t *h, int ht, char *indent);
 
 //   return search(btree->root, key, btree->height);
 // }
+#if DEBUG_APPLE_IN_AMAZON
+static char *search(node_t *x, char *key, int ht);
+static char *search(node_t *x, char *key, int ht) {
+  entry_t *children[M];
+  for (size_t i = 0; i < M; i++)
+    children[i] = x->children[i];
 
-// static char *search(node_t *x, char *key, int ht) {
-//   entry_t *children[M];
-//   for (size_t i = 0; i < M; i++)
-//     children[i] = x->children[i];
+  // external node, i.e. leaf
+  if (ht == 0) {
+    for (int j = 0; j < x->m; j++) {
+      if (key == children[j]->key)
+        return children[j]->val;
+    }
+  }
 
-//   // external node, i.e. leaf
-//   if (ht == 0) {
-//     for (int j = 0; j < x->m; j++) {
-//       if (key == children[j]->key)
-//         return children[j]->val;
-//     }
-//   }
-
-//   // internal node
-//   else {
-//     for (int j = 0; j < x->m; j++) {
-//       /*
-//       1. based on balance, the order is the increasing value with the increasing index.
-//       2. `j + 1 == x->m` means the `key` must be larger than 
-//       the largest child index key `children[j + 1]->key`
-//       So try searching in the last subtree. 
-//       */
-//       if (j + 1 == x->m || strcmp(key, children[j + 1]->key) < 0)
-//         return search(children[j]->next, key, ht - 1);
-//     }
-//   }
-//   return NULL;
-// }
+  // internal node
+  else {
+    for (int j = 0; j < x->m; j++) {
+      /*
+      1. based on balance, the order is the increasing value with the increasing index.
+      2. `j + 1 == x->m` means the `key` must be larger than 
+      the largest child index key `children[j + 1]->key`
+      So try searching in the last subtree. 
+      */
+      if (j + 1 == x->m || strcmp(key, children[j + 1]->key) < 0)
+        return search(children[j]->next, key, ht - 1);
+    }
+  }
+  return NULL;
+}
+#endif
 
 // Returns a string representation of this B-tree (for debugging).
 static char *toString(btree_t *btree) {
@@ -214,15 +262,13 @@ static char *toStringHelper(node_t *h, int ht, char *indent) {
     }
   } else {
     for (int j = 0; j < h->m; j++) {
-      // if (j > 0) {
-        strcat(s, indent);
-        strcat(s, "(");
-        strcat(s, children[j]->key);
-        strcat(s, ")\n");
-      // }
+      strcat(s, indent);
+      strcat(s, "(");
+      strcat(s, children[j]->key);
+      strcat(s, ")\n");
       char *intentCp = malloc(STRING_BLOCK * sizeof(char));
       if (!intentCp) {
-        // handle_error_en(errno, "malloc intentCp");
+        handle_error_en(errno, "malloc intentCp");
       }
       strcpy(intentCp, indent);
       strcat(intentCp, "     ");
@@ -293,6 +339,14 @@ static void put(btree_t *btree, char *key, char *val) {
   which is originally root->children[0]->val.
   2. t->children[1] stores `u->children[0]->key` because `t->children[j] = h->children[M / 2 + j];` stores
   the right half of original root.
+  3. here
+  old_root -> {1,2,3,4}
+  will be 
+  new_root -> {1(old_root):{1,2},3:{3,4}} 
+  (here original {3,4} in old_root is freed/invalidated by `h->children[M / 2 + j] = NULL;`.)
+  (above is one simplified representation where only keys are shown)
+  4. here `free(t->children[0])` is ok because it free the address stored in t->children[0]
+  instead of `t->children[0]` self.
   */
   entry_t * old_entry = t->children[0];
   t->children[0] = initEntry(btree->root->children[0]->key, NULL, btree->root);
@@ -312,19 +366,26 @@ static insert_ret *insert(node_t *h, char *key, char *val, int ht) {
   ret->mod_parent=0;
   ret->ret_node=NULL;
   entry_t *t = initEntry(key, val, NULL);
+  int reach_end = 0;
 
   // external node
   if (ht == 0) {
     /*
-    Notice if here `key < h->children[0]->key` and not split, then it will insert at the start of the last level.
+    1. Notice if here `key < h->children[0]->key` and not split, then it will insert at the start of the last level.
     but after returning to the up level, it won't change the parent key
     so maybe child key is bigger than the parent 
+    2. "" always less than strings So ignore it to avoid recursion.
+    3. break after `h->m==0` to ensure unnecessary assignment of later `j=1`.
+    then `for (int i = h->m; i > j; i--)` can insert value.
+    i.e. h->m=0 -> j=0 -> `h->children[j] = t;`
+    h->m=1 -> insert_node -> whether `h->children[i] = h->children[i - 1];` depends on whether `ret->mod_parent`
+    h->m>1 just functions as before.
     */
-    if (strcmp(key, "") !=0 && strcmp(key, h->children[0]->key) < 0){
-      ret->mod_parent =1;
+    if (h->m==0) {
       goto insert_node;
     }
-    if (h->m==0) {
+    if (strcmp(key, "") !=0 && strcmp(key, h->children[0]->key) < 0){
+      ret->mod_parent =1;
       goto insert_node;
     }
     for (j = 1; j < h->m; j++) {
@@ -336,13 +397,21 @@ static insert_ret *insert(node_t *h, char *key, char *val, int ht) {
   // internal node
   else {
     for (j = 0; j < h->m; j++) {
-      if ((j + 1 == h->m) || strcmp(key, h->children[j + 1]->key) < 0) {
+      /*
+      select the correct subtree to insert
+      and the real insert is done when ht=0.
+      then recursively check split and pass the mod_parent added by myself.
+      */
+      if ((reach_end=(j + 1 == h->m)) || strcmp(key, h->children[j + 1]->key) < 0) {
         /*
         1. Go into the subtree so `ht - 1`
         */
         #if DEBUG_APPLE_IN_AMAZON
         if (strcmp(key, "www.apple.com")==0) {
-          printf("%s < %s and insert to %s\n",key,h->children[j + 1]->key,h->children[j]->key); 
+          if (!reach_end)
+            printf("%s < %s and insert to %s\n",key,h->children[j + 1]->key,h->children[j]->key);
+          else
+            printf("%s > all children and insert after %s\n",key,h->children[j]->key);
           fflush(stdout);
         }
         #endif
@@ -359,6 +428,10 @@ static insert_ret *insert(node_t *h, char *key, char *val, int ht) {
           free(t);
           return u;
         }
+        /*
+        prepare for the following insert at h level 
+        because one `h` children sub-tree is splitted and a new node is created.
+        */
         t->key = u->ret_node->children[0]->key;
         t->next = u->ret_node;
         free(u);
@@ -438,6 +511,10 @@ void free_node (node_t* subnode){
     if (subnode->children[i]==NULL) {
       continue;
     }
+    /*
+    1. Here first recursively free the relative leaf nodes and then the relative parent.
+    2. in loop, not free something is independent from `i` which will probably cause double free.
+    */
     node_t* target_node = subnode->children[i]->next;
     if (target_node!=NULL) {
       free_node(target_node);
