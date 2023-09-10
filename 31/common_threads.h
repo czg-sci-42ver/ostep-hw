@@ -42,6 +42,7 @@
 
 /*
 TODO Try using shm_unlink to implement. https://stackoverflow.com/a/67737243/21294350
+Also see https://github.com/xxyzz/ostep-hw/pull/21 comments to understand.
 */
 void check_shm(char *obj_name){
   char *shm_path = (char *)malloc(100*sizeof(char));
@@ -50,7 +51,7 @@ void check_shm(char *obj_name){
   #ifndef CHECK_ERRNO
   if (access(shm_path,F_OK)==0) {
   #endif
-    assert(remove(shm_path)==0);
+    Sem_unlink(obj_name);
   #ifndef CHECK_ERRNO
   }
   #endif

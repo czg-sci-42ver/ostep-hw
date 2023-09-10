@@ -1,3 +1,6 @@
+/*
+Just from Figure 31.13 and use `sem_open` here.
+*/
 #include "common_threads.h"
 #include <stdio.h>
 #include <stdlib.h>
