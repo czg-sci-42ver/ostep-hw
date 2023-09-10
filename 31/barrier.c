@@ -33,30 +33,79 @@ void barrier_init(barrier_t *b, int num_threads) {
   b->num_arrived = 0;
   b->num_threads = num_threads;
 }
+// #define DEBUG_POST
+// #define LOG
+#ifdef DEBUG_POST
+int post=0;
+#endif
 
 void barrier(barrier_t *b) {
   // reusable barrier code goes here
+  /*
+  Sometimes weird all threads stuck at "Sem_wait(b->mutex);" when mutex init 1
+  """
+  __size = "\000\000\000\000Z\000\000\000\200", '\000' <repeats 22 times> # b->mutex init 1
+  __size = "\000\000\000\000\000\000\000\000\200", '\000' <repeats 22 times> # b->turnstile1 init 0
+  """
+  after rebooting, the same code
+  """
+  __size = "\001\000\000\000\000\000\000\000\200", '\000' <repeats 22 times>, # works fine
+  """
+  */
   Sem_wait(b->mutex);
   b->num_arrived += 1;
   if (b->num_arrived == b->num_threads) {
-    for (int i = 0; i < b->num_threads; i++)
+    for (int i = 0; i < b->num_threads; i++){
       Sem_post(b->turnstile1);
+      #ifdef DEBUG_POST
+      post++;
+      #endif
+      #ifdef LOG
+      printf("post\n");
+      #endif
+      #ifdef DEBUG_POST
+      printf("post:%d\n",post);
+      #endif
+    }
   }
+  #ifdef LOG
+  printf("arrive:%d\n",b->num_arrived);
+  #endif
   Sem_post(b->mutex);
+  // sleep after post then begin wait at different time to test whether wait works.
+  sleep(1);
 
   Sem_wait(b->turnstile1);
+  #ifdef LOG
+  printf("critical point\n");
+  #endif
 
-  // critical point
+  // critical point between P1 and P2
 
   Sem_wait(b->mutex);
   b->num_arrived -= 1;
   if (b->num_arrived == 0) {
-    for (int i = 0; i < b->num_threads; i++)
+    for (int i = 0; i < b->num_threads; i++){
+      /*
+      Not use turnstile1 here, otherwise some threads get stuck at `Sem_wait(b->turnstile1)`
+      and `num_arrived` can't be 0 to post more.
+      */
+      #ifdef DEBUG_POST
+      Sem_post(b->turnstile1);
+      post++;
+      printf("post:%d\n",post);
+      #else
       Sem_post(b->turnstile2);
+      // Sem_wait(b->turnstile2);
+      #endif
+    }
   }
   Sem_post(b->mutex);
-
+  #ifdef DEBUG_POST
+  Sem_wait(b->turnstile1);
+  #else
   Sem_wait(b->turnstile2);
+  #endif
 }
 
 //
