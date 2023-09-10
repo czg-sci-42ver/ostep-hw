@@ -62,9 +62,13 @@ ns_mutex_t m;
 int counter = 0;
 
 void *worker(void *arg) {
-  ns_mutex_acquire(&m);
-  counter++;
-  ns_mutex_release(&m);
+  while (1) {
+    printf("id:%d\n",*(int*)arg);
+    ns_mutex_acquire(&m);
+    counter++;
+    ns_mutex_release(&m);
+    sleep(1);
+  }
   return NULL;
 }
 
@@ -76,8 +80,11 @@ int main(int argc, char *argv[]) {
   printf("parent: begin\n");
 
   int i;
-  for (i = 0; i < num_threads; i++)
-    Pthread_create(&p[i], NULL, worker, NULL);
+  int thread_id[num_threads];
+  for (i = 0; i < num_threads; i++){
+    thread_id[i]=i;
+    Pthread_create(&p[i], NULL, worker, &thread_id[i]);
+  }
 
   for (i = 0; i < num_threads; i++)
     Pthread_join(p[i], NULL);

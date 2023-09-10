@@ -59,7 +59,7 @@ void *reader(void *arg) {
   for (i = 0; i < loops; i++) {
     rwlock_acquire_readlock(&lock);
     printf("read %d\n", value);
-    sleep(2); // strave writer
+    sleep(2); // hold the lock when sleep and strave writer
     rwlock_release_readlock(&lock);
   }
   return NULL;
