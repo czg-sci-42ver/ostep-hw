@@ -36,6 +36,8 @@ although comment
 
 #define CHECK_FD
 // #define REOPEN
+// #define USE_STATIC
+#define USE_ENUM_COMPILE_CONST
 #define USE_AIO
 #define TARGET_STR "This is test"
 char *filename = "test.txt";
@@ -59,15 +61,27 @@ int main() {
   unlink(tmpfname);
 
   #ifdef CHECK_FD
-  const int MAXMSG =1024;
   /*
   https://stackoverflow.com/a/3082971/21294350
   MAXMSG is variable, so the compiler doesn't know the size at the compile time.
   */
-  // char buffer[MAXMSG]={0};
+  #ifdef USE_ENUM_COMPILE_CONST
+  enum { MAXMSG = 255 };
+  #elif USE_STATIC
+  static const int MAXMSG =1024;
+  #else
+  const int MAXMSG =1024;
+  #endif
+  /*
+  https://stackoverflow.com/a/55016661/21294350
+  */
+  #if defined(USE_ENUM_COMPILE_CONST) || defined(USE_STATIC)
+  char buffer[MAXMSG]={0};
+  #else
   char buffer[MAXMSG];
-  fd = open(filename, O_RDONLY, S_IRUSR);
   memset( buffer, 0, MAXMSG*sizeof(char) );
+  #endif
+  fd = open(filename, O_RDONLY, S_IRUSR);
   if (read(fd,buffer,MAXMSG)==-1) {
     perror ("read file");
     return -1;
@@ -76,6 +90,9 @@ int main() {
   #endif
 
   #ifdef CHECK_FD
+  /*
+  https://stackoverflow.com/a/58681458/21294350 O_TRUNC
+  */
   if((fd = open(filename, O_CREAT | O_RDWR | O_TRUNC, S_IRUSR | S_IWUSR))==-1){
     
   }

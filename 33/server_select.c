@@ -24,6 +24,7 @@ char *forbidden_files[FORBIDDEN_FILES_NUM] = {"test1.txt","not_me.txt"};
 #endif
 
 #define SHOW_FD_DEBUG_OFFSET
+#define DEBUG_LSOF_OFFSET
 
 #define SIGNAL_CLEAR_FILE_CACHE
 #ifdef SIGNAL_CLEAR_FILE_CACHE
@@ -38,6 +39,7 @@ the following 2 lines no use https://stackoverflow.com/a/8302589/21294350
 1. here default return int
 1.1 https://stackoverflow.com/a/48183460/21294350 _Generic still needs to take all conditions in account, and not use the compiler to decide.
 2. https://stackoverflow.com/a/41446972/21294350 
+3. typeof https://stackoverflow.com/a/53928817/21294350
 */
 #define TEMP_FAILURE_RETRY(exp)            \
   ({                                       \
@@ -197,14 +199,17 @@ read_from_client (int filedes)
       ...
       file fd: 5
       ...
-      $ sudo lsof -d 5
+      # https://unix.stackexchange.com/questions/34751/how-to-find-out-the-file-offset-of-an-opened-file
+      $ sudo lsof -d 5 -o 5 | grep -e "20946\|COMMAND"
       COMMAND     PID        USER   FD      TYPE             DEVICE SIZE/OFF    NODE NAME
-      ...
-      systemd     863    czg_arch    5u  a_inode               0,15        0    2093 [signalfd]
-      so offset default 0
+      server_se 20946    czg_arch    5r      REG               0,26       14 7956471 /home/czg_arch/ostep-hw/33/test2.txt
+      $ wc -m test2.txt 
+      14 test2.txt
       */
       printf("pid: %d file fd: %d\n",getpid(),fd);
-      // sleep(20);
+      #ifdef DEBUG_LSOF_OFFSET
+      sleep(20);
+      #endif
       #endif
       #ifdef SIGNAL_CLEAR_FILE_CACHE
       strcpy(file_cache[file_cache_tail].file_name, buffer);
@@ -336,6 +341,10 @@ main (void)
   new_action.sa_flags = SA_RESTART;
   sigaction (SIGUSR1, &new_action, &old_action);
   #endif
+  sigset_t block_set;
+  sigfillset(&block_set);
+  sigdelset(&block_set, SIGINT);
+  sigdelset(&block_set, SIGUSR1);
 
   /* Create the socket and set it up to accept connections. */
   sock = make_socket (PORT);
@@ -354,14 +363,25 @@ main (void)
       /* Block until input arrives on one or more active sockets. */
       read_fd_set = active_fd_set;
       /*
-      The `FD_SETSIZE` implies "accept multiple connections"
+      1. The `FD_SETSIZE` implies "accept multiple connections"
+      2. Also can use select with sigprocmask similar to csapp. https://stackoverflow.com/a/46047380/21294350
+      3. TEMP_FAILURE_RETRY https://www.gnu.org/software/libc/manual/html_node/Flags-for-Sigaction.html#index-SA_005fRESTART
       */
-      if (TEMP_FAILURE_RETRY(select (FD_SETSIZE, &read_fd_set, NULL, NULL, NULL)) < 0)
+      if (TEMP_FAILURE_RETRY(pselect (FD_SETSIZE, &read_fd_set, NULL, NULL, NULL,&block_set)) < 0)
         {
           perror ("select");
           #ifdef SIGNAL_CLEAR_FILE_CACHE
+          /*
+          1. inspired by https://stackoverflow.com/a/4959731/21294350 
+          by https://stackoverflow.com/questions/4959524/when-to-check-for-eintr-and-repeat-the-function-call#comment105871242_59795677
+          select/poll always has `EINTR` independent of whether SA_RESTART. 
+          Also see `man pselect` "implementation‐defined"
+          > it is implementation‐defined whether the function restarts or returns with [EINTR]
+
+          example: https://unix.stackexchange.com/a/600353/568529
+          */
           if (errno==EINTR) {
-            printf("interrupted by the non-SIGUSR1 signal\n");
+            printf("interrupted by some signal\n");
             exit (EXIT_FAILURE);
           }
           #endif
