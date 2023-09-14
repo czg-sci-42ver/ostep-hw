@@ -5,12 +5,14 @@
 void *send_requests(void *arg) {
   char *file_name = (char *)arg;
   int sfd = init_socket(0, 0);
+  printf("len:%ld\n",strlen(file_name));
   if (send(sfd, file_name, strlen(file_name), 0) == -1)
     handle_error("send");
   char buf[BUFSIZ] = "";
+  printf("begin receive\n");
   if (recv(sfd, buf, BUFSIZ, 0) == -1)
     handle_error("recv");
-  printf("%s\n", buf);
+  printf("receive: %s\n", buf);
   close(sfd);
   return NULL;
 }

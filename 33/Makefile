@@ -1,6 +1,6 @@
-CFLAGS = -Wall -Wextra
+CFLAGS = -Wall -Wextra -g
 
-ALL_TARGETS = client.out server_libevent.out
+ALL_TARGETS = client.out server_libevent.out server_select.out
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)

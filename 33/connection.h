@@ -33,6 +33,7 @@ int init_socket(int is_server, int nonblock) {
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
   addr.sin_port = htons(SOCKET_PORT);
+  printf("%dconverted to %d\n",SOCKET_PORT,addr.sin_port);
   addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
   if (is_server) {
     const int optval = 1;
