@@ -3,6 +3,8 @@
 import argparse
 import platform
 import subprocess
+import time
+import os
 
 parser = argparse.ArgumentParser()
 parser.add_argument("file_name")
@@ -17,9 +19,18 @@ def bench(lib):
         sp = subprocess.Popen(
             [f'./server_{lib}.out', str(args.num_reqs)],
             stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        # os.system("echo $(sudo netstat -tnlp | grep :8080)")
         cp = subprocess.Popen(
             ['./client.out', args.file_name, str(args.num_reqs)],
             stderr=subprocess.PIPE, stdout=subprocess.DEVNULL, text=True)
+        time.sleep(0.100)
+        os.system("echo $(sudo netstat -tnlp | grep :8080)")
+        """
+        TODO sometimes "client error: connect: Connection refused"
+        https://serverfault.com/a/725263/1032032
+
+        TODO why must call cp before sp, communicate implies blocking? https://stackoverflow.com/a/2408670/21294350
+        """
         _, c_err = cp.communicate()
         if c_err:
             print(f'client error: {c_err}')

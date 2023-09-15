@@ -2,6 +2,8 @@
 #include <pthread.h>
 #include <unistd.h> // close
 
+#define NOT_PENDING_ZERO_DATAGRAM
+
 void *send_requests(void *arg) {
   char *file_name = (char *)arg;
   int sfd = init_socket(0, 0);
@@ -10,12 +12,23 @@ void *send_requests(void *arg) {
     handle_error("send");
   char buf[BUFSIZ] = "";
   printf("begin receive\n");
+  /*
+  by `man 2 recv`, recv doesn't pend with the "zero‐length  datagram". 
+  > recv() consumes the pending datagram
+  */
+  #ifdef NOT_PENDING_ZERO_DATAGRAM
   if (recv(sfd, buf, BUFSIZ, 0) == -1)
+  #else
+  if (read(sfd, buf, BUFSIZ) == -1)
+  #endif
     handle_error("recv");
   printf("receive: %s\n", buf);
+  fflush(stdout);
   close(sfd);
   return NULL;
 }
+
+#define USE_THREAD
 
 int main(int argc, char *argv[]) {
   if (argc != 3) {
@@ -23,6 +36,7 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
   int num_threads = atoi(argv[2]);
+  #ifdef USE_THREAD
   if (num_threads > 1) {
     pthread_t threads[num_threads];
     for (int i = 0; i < num_threads; i++) {
@@ -35,5 +49,11 @@ int main(int argc, char *argv[]) {
     } 
   } else
     send_requests(argv[1]);
+  #else
+  while (num_threads!=0) {
+    send_requests(argv[1]);
+    num_threads--;
+  }
+  #endif
   return 0;
 }

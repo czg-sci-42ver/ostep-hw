@@ -6,13 +6,15 @@
 #include <string.h>     // memset, memcpy, strerror
 #include <sys/socket.h> // socket, bind, listen, AF_INET
 
-#define LISTEN_BACKLOG 80 // maxium length of the pending connections queue
+#define LISTEN_BACKLOG 800 // maxium length of the pending connections queue
 #define SOCKET_PORT 8080
 #define handle_error(msg)                                                      \
   do {                                                                         \
     perror(msg);                                                               \
     exit(EXIT_FAILURE);                                                        \
   } while (0)
+
+// #define USE_SO_REUSEPORT
 
 int init_socket(int is_server, int nonblock) {
   struct sockaddr_in addr;
@@ -33,11 +35,15 @@ int init_socket(int is_server, int nonblock) {
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
   addr.sin_port = htons(SOCKET_PORT);
-  printf("%dconverted to %d\n",SOCKET_PORT,addr.sin_port);
+  // printf("%dconverted to %d\n",SOCKET_PORT,addr.sin_port);
   addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
   if (is_server) {
     const int optval = 1;
+    #ifdef USE_SO_REUSEPORT
+    if (setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR|SO_REUSEPORT, &optval, sizeof(optval)))
+    #else
     if (setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)))
+    #endif
       handle_error("setsocketopt");
     if (bind(sfd, (struct sockaddr *)&addr, sizeof(addr)) == -1)
       handle_error("bind");

@@ -24,7 +24,8 @@ char *forbidden_files[FORBIDDEN_FILES_NUM] = {"test1.txt","not_me.txt"};
 #endif
 
 #define SHOW_FD_DEBUG_OFFSET
-#define DEBUG_LSOF_OFFSET
+// #define DEBUG_LSOF_OFFSET
+// #define READ_TO_BUFFER_BUT_SEND_ZERO_CONTENT_BUFFER
 
 #define SIGNAL_CLEAR_FILE_CACHE
 #ifdef SIGNAL_CLEAR_FILE_CACHE
@@ -205,6 +206,13 @@ read_from_client (int filedes)
       server_se 20946    czg_arch    5r      REG               0,26       14 7956471 /home/czg_arch/ostep-hw/33/test2.txt
       $ wc -m test2.txt 
       14 test2.txt
+
+      $ ./server_epoll.out 10
+      8080converted to 36895
+      (pid 9117) init offset with file 6: 0
+      $ sudo lsof -d 6 -o 5 -o | grep -e "9117\|COMMAND"
+      COMMAND    PID        USER   FD      TYPE             DEVICE  OFFSET    NODE NAME
+      server_ep 9117    czg_arch    6r      REG               0,26     0t0 7956471 /home/czg_arch/ostep-hw/33/test2.txt
       */
       printf("pid: %d file fd: %d\n",getpid(),fd);
       #ifdef DEBUG_LSOF_OFFSET
@@ -256,7 +264,11 @@ read_from_client (int filedes)
       printf("after read, buffer: %s\n",content_buffer);
       #endif
       #else
+      #ifdef READ_TO_BUFFER_BUT_SEND_ZERO_CONTENT_BUFFER
+      if (read(fd,buffer,MAXMSG)==-1) {
+      #else
       if (read(fd,content_buffer,MAXMSG)==-1) {
+      #endif
         perror ("read file");
         return -1;
       }
@@ -268,6 +280,12 @@ read_from_client (int filedes)
       */
       #ifdef USE_AIO
       assert(send(filedes, content_buffer, strlen(content_buffer), 0)!=-1);
+      #elif defined (READ_TO_BUFFER_BUT_SEND_ZERO_CONTENT_BUFFER)
+      /*
+      It seems no use https://stackoverflow.com/a/30848721/21294350
+      both recv and read blocks when reading zero‐length  datagram.
+      */
+      assert(send(filedes, content_buffer, 0, 0)!=-1);
       #else
       assert(send(filedes, content_buffer, strlen(content_buffer), 0)!=-1);
       #endif
@@ -287,6 +305,7 @@ read_from_client (int filedes)
       if (file_cache_tail==CACHE_NUM) {
         /*
         simple FIFO schedule.
+        same as io_uring.pdf p5,6 implementation.
         */
         file_cache_tail=0;
       }
@@ -445,4 +464,5 @@ main (void)
               }
           }
     }
+  close(sock);
 }

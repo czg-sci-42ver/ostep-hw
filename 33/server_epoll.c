@@ -22,6 +22,9 @@ int main(int argc, char *argv[]) {
   int epfd = epoll_create1(0);
   if (epfd == -1)
     handle_error("epoll_create1");
+  /*
+  Similar to "Example for suggested usage" in `man 7 epoll`
+  */
   struct epoll_event ev;
   struct epoll_event evlist[LISTEN_BACKLOG];
   ev.events = EPOLLIN;
@@ -52,21 +55,33 @@ int main(int argc, char *argv[]) {
           if (recv(evlist[i].data.fd, buff, BUFSIZ, 0) == -1)
             handle_error("recv");
           int fd = open(buff, O_RDONLY);
-          if (fd == -1)
+          if (fd == -1){
+            printf("%s open fails\n",buff);
+            fflush(stdout);
             handle_error("open");
+          }
           struct stat statbuf;
           if (fstat(fd, &statbuf) == -1)
             handle_error("fstat");
+          #ifdef DEBUG_OFFSET
+          /*
+          https://www.i-programmer.info/programming/cc/13942-applying-c-file-descriptors.html?start=1
+          */
+          off_t currentPos=lseek(fd,0,SEEK_CUR);
+          printf("(pid %d) init offset with file %d: %ld\n",getpid(),fd,currentPos);
+          sleep(30);
+          #endif
           if (sendfile(evlist[i].data.fd, fd, NULL, statbuf.st_size) == -1)
             handle_error("sendfile");
           close(fd);
-          close(evlist[i].data.fd);
+          close(evlist[i].data.fd); // close cfd
           numReqs--;
         }
       }
     }
   }
   close(sfd);
+  close(epfd);
   if (clock_gettime(CLOCK_MONOTONIC, &end) == -1)
     handle_error("clock_gettime");
   // nanoseconds

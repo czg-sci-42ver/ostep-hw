@@ -1,8 +1,14 @@
+/*
+From the io_uring.pdf, many old APIs like aio_read/aio_write are kept.
+*/
 #include "connection.h"
 #include <liburing.h>
 #include <stdio.h>
 #include <time.h>   // clock_gettime
 #include <unistd.h> // close
+
+#define PARALLEL_ACCEPT_RECV
+#define NO_DUP_ZERO
 
 // man io_uring
 // https://kernel.dk/io_uring.pdf
@@ -30,6 +36,11 @@ void prep_accept(struct io_uring *ring, int sfd) {
 
   io_uring_prep_accept(sqe, sfd, NULL, NULL, 0);
   // https://github.com/axboe/liburing/commit/8ecd3fd959634df81d66af8b3a69c16202a014e8
+  /*
+  See example https://github.com/axboe/liburing/blob/b58921e0b0ae84b6f1cd22b87c66a6e91a540ec8/examples/link-cp.c#L74
+  and https://github.com/axboe/liburing/blob/b58921e0b0ae84b6f1cd22b87c66a6e91a540ec8/examples/ucontext-cp.c#L58C2-L58C23
+  it seems `data` in io_uring_sqe_set_data depends on manual implementation.
+  */
   data_arr[--numAccepts].io_op = IORING_OP_ACCEPT;
   data_arr[numAccepts].index = numAccepts;
   io_uring_sqe_set_data(sqe, &data_arr[numAccepts]);
@@ -49,7 +60,11 @@ void prep_recv(struct io_uring *ring, int sfd, int cfd, int index) {
   io_uring_sqe_set_data(sqe, &data_arr[index]);
   if (numAccepts > 0)
     prep_accept(ring, sfd);
+  #ifdef PARALLEL_ACCEPT_RECV
+  if (io_uring_submit(ring) < 0)
+  #else
   else if (io_uring_submit(ring) < 0)
+  #endif
     handle_error("io_uring_submit");
 }
 
@@ -66,7 +81,9 @@ void prep_read(struct io_uring *ring, int index) {
 
   data_arr[index].io_op = IORING_OP_READ;
   data_arr[index].file_fd = file_fd;
+  #ifndef NO_DUP_ZERO
   memset(data_arr[index].buf, 0, BUFSIZ);
+  #endif
   io_uring_prep_read(sqe, file_fd, data_arr[index].buf, BUFSIZ, 0);
   io_uring_sqe_set_data(sqe, &data_arr[index]);
   if (io_uring_submit(ring) < 0)
@@ -103,6 +120,9 @@ int main(int argc, char *argv[]) {
   numAccepts = numReqs;
   int sfd = init_socket(1, 0);
   struct io_uring ring;
+  /*
+  see io_uring.pdf p12 for the pair of init and exit.
+  */
   if (io_uring_queue_init(LISTEN_BACKLOG, &ring, IORING_SETUP_SQPOLL))
     handle_error("io_uring_queue_init");
   prep_accept(&ring, sfd);
@@ -111,13 +131,22 @@ int main(int argc, char *argv[]) {
     struct io_uring_cqe *cqe;
     if (io_uring_wait_cqe(&ring, &cqe))
       handle_error("io_uring_wait_cqe");
+    /*
+    https://unixism.net/loti/ref-liburing/cqe.html
+    */
     if (cqe->res < 0) {
       fprintf(stderr, "I/O error: %s\n", strerror(-cqe->res));
       exit(EXIT_FAILURE);
     }
+    /*
+    See io_uring.pdf p3,4 for the user_data usage.
+    */
     struct user_data *data = io_uring_cqe_get_data(cqe);
     switch (data->io_op) {
     case IORING_OP_ACCEPT:
+    /*
+    See `man io_uring_prep_accept` and io_uring.pdf p4 for res usage
+    */
       prep_recv(&ring, sfd, cqe->res, data->index);
       break;
     case IORING_OP_RECV:
@@ -133,6 +162,10 @@ int main(int argc, char *argv[]) {
     default:
       handle_error("Unknown I/O");
     }
+    /*
+    See io_uring.pdf
+    this is to reuse the cqe entry.
+    */
     io_uring_cqe_seen(&ring, cqe);
   }
   io_uring_queue_exit(&ring);
