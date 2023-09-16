@@ -1,5 +1,5 @@
 #ifdef __linux__
-#define _GNU_SOURCE // accept4
+// #define _GNU_SOURCE // accept4
 #endif
 #include "connection.h"
 #include <event2/buffer.h>

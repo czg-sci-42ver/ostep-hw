@@ -12,7 +12,7 @@ parser.add_argument("num_reqs", type=int)
 parser.add_argument("trials", type=int)
 args = parser.parse_args()
 
-watch_process=0
+watch_process=1
 sp_first=1
 
 def bench(lib):

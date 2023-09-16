@@ -1,4 +1,5 @@
-CFLAGS = -Wall -Wextra -g
+# _GNU_SOURCE defined in header no use
+CFLAGS = -Wall -Wextra -g -D_GNU_SOURCE
 
 ALL_TARGETS = client.out server_libevent.out server_select.out
 
