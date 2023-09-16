@@ -147,6 +147,7 @@ bench(){
 
 # ensures client send to expected servers.
 clear_all_servers
-bench epoll
+# same order with ./bench.py
 bench io_uring
+bench epoll
 bench libevent

@@ -13,8 +13,12 @@
     perror(msg);                                                               \
     exit(EXIT_FAILURE);                                                        \
   } while (0)
-
-// #define USE_SO_REUSEPORT
+// #define AVOID_CONNECT_ERROR
+#ifdef AVOID_CONNECT_ERROR
+#include <unistd.h>
+static int retry_connect=0;
+#endif
+#define USE_SO_REUSEPORT
 
 int init_socket(int is_server, int nonblock) {
   struct sockaddr_in addr;
@@ -49,7 +53,24 @@ int init_socket(int is_server, int nonblock) {
       handle_error("bind");
     if (listen(sfd, LISTEN_BACKLOG) == -1)
       handle_error("listen");
-  } else if (connect(sfd, (struct sockaddr *)&addr, sizeof(addr)) != 0)
-    handle_error("connect");
+  } else 
+  #ifdef AVOID_CONNECT_ERROR
+    /*
+    similar to browser F5, reconnect if failure.
+    */
+    while (connect(sfd, (struct sockaddr *)&addr, sizeof(addr)) != 0){
+      retry_connect++;
+      fprintf(stdout, "child pid: %d retry: %d\n",getpid(),retry_connect);
+      fflush(stdout);
+      // sleep(1);
+      if (retry_connect==200) {
+        handle_error("connect");
+      }
+    }
+  #else
+    if (connect(sfd, (struct sockaddr *)&addr, sizeof(addr))!=0) {
+      handle_error("connect");
+    }
+  #endif
   return sfd;
 }
