@@ -13,6 +13,7 @@ parser.add_argument("trials", type=int)
 args = parser.parse_args()
 
 watch_process=0
+sp_first=1
 
 def bench(lib):
     total_time = 0
@@ -40,11 +41,14 @@ def bench(lib):
         if subprocess.check_output(netcmd_echo_str,shell=True) != b'\n':
             print("server still running",repr(subprocess.check_output(netcmd_echo_str,shell=True)))
         """
-        TODO sometimes "client error: connect: Connection refused"
+        sometimes "client error: connect: Connection refused", see connection.h AVOID_CONNECT_ERROR
         https://serverfault.com/a/725263/1032032
 
-        TODO why must call cp before sp, communicate implies blocking? https://stackoverflow.com/a/2408670/21294350
+        why must call cp before sp, communicate implies blocking? https://stackoverflow.com/a/2408670/21294350
+        if cp with error, sp will be into loop, so the blocking state.
         """
+        if sp_first:
+            s_out, s_err = sp.communicate()
         c_out, c_err = cp.communicate()
         if watch_process:
             print(c_out)
@@ -52,7 +56,8 @@ def bench(lib):
             print(f'client error: {c_err}')
             sp.terminate()
             exit(1)
-        s_out, s_err = sp.communicate()
+        if not sp_first:
+            s_out, s_err = sp.communicate()
         if s_err:
             print(f'server error: {s_err}')
             exit(1)

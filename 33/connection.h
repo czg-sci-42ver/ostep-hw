@@ -13,7 +13,7 @@
     perror(msg);                                                               \
     exit(EXIT_FAILURE);                                                        \
   } while (0)
-// #define AVOID_CONNECT_ERROR
+#define AVOID_CONNECT_ERROR
 #ifdef AVOID_CONNECT_ERROR
 #include <unistd.h>
 static int retry_connect=0;
