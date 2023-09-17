@@ -16,10 +16,17 @@ workerThread (void * arg) {
 		Zem_wait(&mutex);
 		Buffer_t *reqBuf = (Buffer_t *) arg;
 		int useCopy = use;
+		/*
+		Part 2 of README
+		*/
 		if (strcmp(schedalg, "SFF") == 0) {
 			size_t i;
 			off_t min_size = LLONG_MAX;
-			for (i = 0; i < buffers; i++) {
+			for (i = 0; i < (size_t)buffers; i++) {
+				/*
+				handling records whether the request has been handled.
+				the whole buffer is shared across threads.
+				*/
 				if (!reqBuf[i].handling && reqBuf[i].fd && reqBuf[i].size < min_size) {
 					min_size = reqBuf[i].size;
 					useCopy = i;
@@ -30,6 +37,10 @@ workerThread (void * arg) {
 			use = (use + 1) % buffers;
 		}
 		Zem_post(&mutex);
+		/*
+		allow parallel here.
+		So maybe multiple Headers are manipulated and then file is outputed.
+		*/
 		if (reqBuf[useCopy].is_static) {
 			request_serve_static(reqBuf[useCopy].fd, reqBuf[useCopy].pathname, reqBuf[useCopy].size);
 		} else {
@@ -44,7 +55,7 @@ workerThread (void * arg) {
 // ./wserver [-d <basedir>] [-p <portnum>] [-t threads] [-b buffers] [-s schedalg]
 // 
 int main(int argc, char *argv[]) {
-    int c, fill;
+    int c, fill=0;
     char *root_dir = default_root;
     int port = 10000, threads = 1;
     
@@ -71,7 +82,8 @@ int main(int argc, char *argv[]) {
 				exit(1);
 		}
 
-	Buffer_t buffer[buffers];
+	// Buffer_t buffer[buffers];
+	Buffer_t* buffer=malloc(buffers*sizeof(Buffer_t));
 	Zem_init(&full, 0);
 	Zem_init(&empty, buffers);
 	Zem_init(&mutex, 1);
@@ -80,31 +92,35 @@ int main(int argc, char *argv[]) {
 	for (int i = 0; i < threads; i++)
 		Pthread_create(&threadsArr[i], NULL, &workerThread, buffer);
 
-    // run out of this directory
-    chdir_or_die(root_dir);
+	// run out of this directory
+	chdir_or_die(root_dir);
 
-    // now, get to work
-    int listen_fd = open_listen_fd_or_die(port);
-    while (1) {
-		struct sockaddr_in client_addr;
-		int client_len = sizeof(client_addr);
-		Zem_wait(&empty);
-		int conn_fd = accept(listen_fd, (sockaddr_t *) &client_addr, (socklen_t *) &client_len);
-		if (conn_fd == -1) {
-			Zem_post(&empty);
-			continue;
-		}
-		Zem_wait(&mutex);
+	// now, get to work
+	int listen_fd = open_listen_fd_or_die(port);
+	while (1) {
+	struct sockaddr_in client_addr;
+	int client_len = sizeof(client_addr);
+	Zem_wait(&empty);
+	int conn_fd = accept(listen_fd, (sockaddr_t *) &client_addr, (socklen_t *) &client_len);
+	if (conn_fd == -1) {
+		Zem_post(&empty);
+		continue;
+	}
+	/*
+	protect the buffer
+	*/
+	Zem_wait(&mutex);
 
-		if (pre_handle_request(conn_fd, &buffer[fill]) != OK) {
-			Zem_post(&mutex);
-			Zem_post(&empty);
-			continue;
-		}
-
-		fill = (fill + 1) % buffers;
+	if (pre_handle_request(conn_fd, &buffer[fill]) != OK) {
 		Zem_post(&mutex);
-		Zem_post(&full);
-    }
-    return 0;
+		Zem_post(&empty);
+		continue;
+	}
+
+	fill = (fill + 1) % buffers;
+	Zem_post(&mutex);
+	Zem_post(&full);
+	}
+	free(buffer);
+	return 0;
 }

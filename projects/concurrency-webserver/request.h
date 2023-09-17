@@ -1,6 +1,6 @@
 #ifndef __REQUEST_H__
 
-#define MAXBUF (8192)
+#define MAXBUF (512)
 
 enum result {
     OK,
@@ -9,12 +9,15 @@ enum result {
 	Error
 };
 
+#define SMALL_BUF (50)
+#include <sys/types.h> // man off_t
+
 typedef struct __Buffer_t {
 	int fd;
 	int is_static;
 	off_t size;
-	char pathname[MAXBUF];
-	char cgiargs[MAXBUF];
+	char pathname[SMALL_BUF];
+	char cgiargs[SMALL_BUF];
 	int handling;
 } Buffer_t;
 

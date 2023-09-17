@@ -170,6 +170,10 @@ pre_handle_request(int fd, Buffer_t *reqBuf) {
     sscanf(buf, "%s %s %s", method, uri, version);
     printf("method:%s uri:%s version:%s\n", method, uri, version);
 
+    /*
+    README
+    > make sure to constrain file requests to stay within the sub-tree of the file system hierarchy
+    */
     if (strstr(uri, "..")) {
         request_error(fd, uri, "403", "Forbidden", "server could not read this file");
         return Forbidden;
@@ -202,7 +206,9 @@ pre_handle_request(int fd, Buffer_t *reqBuf) {
             return Forbidden;
         }
     }
-
+    /*
+    similar to csapp rio_t
+    */
     reqBuf->fd = fd;
     reqBuf->is_static = is_static;
     reqBuf->size = sbuf.st_size;

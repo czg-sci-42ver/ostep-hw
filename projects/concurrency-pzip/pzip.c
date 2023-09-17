@@ -158,6 +158,10 @@ static void writeFile(int character_count, char *oldBuff) {
 }
 
 int main(int argc, char *argv[]) {
+  /*
+  See https://stackoverflow.com/questions/17096990/why-use-bzero-over-memset#comment24732677_17096990
+  better use larger chunk to avoid many read/write syscalls.
+  */
   long page_size = sysconf(_SC_PAGE_SIZE);
   #ifdef DEBUG_ECHO
   printf("pagesize:%ld\n",page_size);

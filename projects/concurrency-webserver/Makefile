@@ -3,7 +3,7 @@
 # To remove files, type "make clean"
 
 CC = clang
-CFLAGS = -Wall -Wextra -pthread
+CFLAGS = -Wall -Wextra -pthread -g
 OBJS = wserver.o wclient.o request.o io_helper.o
 
 all: wserver.out wclient.out spin.cgi

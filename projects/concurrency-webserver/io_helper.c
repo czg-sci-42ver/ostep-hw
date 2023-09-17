@@ -4,7 +4,7 @@ ssize_t readline(int fd, void *buf, size_t maxlen) {
     char c;
     char *bufp = buf;
     int n;
-    for (n = 0; n < maxlen - 1; n++) { // leave room at end for '\0'
+    for (n = 0; (size_t)n < (maxlen - 1); n++) { // leave room at end for '\0'
 	    int rc;
         if ((rc = read(fd, &c, 1)) == 1) {
             *bufp++ = c;

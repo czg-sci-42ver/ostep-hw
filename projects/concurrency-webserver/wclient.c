@@ -19,6 +19,14 @@
 // When we test your server, we will be using modifications to this client.
 //
 
+/*
+Test:
+~/ostep-hw/projects/concurrency-webserver $ mkdir test_files
+$ for i in $(seq 16);do echo $(seq $i) > ./test_files/test$i;done
+$ ./wserver.out -d . -p 8003 -t 8 -b 16 -s SFF
+$ ./wclient.out localhost 8003 /test_files/test 16
+*/
+
 #include "io_helper.h"
 #include "thread_helper.h"
 #include <stdlib.h>    // malloc
@@ -27,6 +35,11 @@
 
 char *host;
 int port;
+
+#define PRINT_SEQUENTIAL
+#ifdef PRINT_SEQUENTIAL
+pthread_mutex_t lock=PTHREAD_MUTEX_INITIALIZER;
+#endif
 
 //
 // Send an HTTP request for the specified file 
@@ -48,7 +61,7 @@ void client_send(int fd, char *filename) {
 void client_print(int fd) {
     char buf[MAXBUF];  
     int n;
-    
+
     // Read and display the HTTP Header 
     n = readline_or_die(fd, buf, MAXBUF);
     while (strcmp(buf, "\r\n") && (n > 0)) {
@@ -77,14 +90,22 @@ send_request(void * arg) {
     /* Open a single connection to the specified host and port */
     int clientfd = open_client_fd_or_die(host, port); 
     client_send(clientfd, filename);
+    #ifdef PRINT_SEQUENTIAL
+    Mutex_lock(&lock);
+    #endif
     client_print(clientfd);
+    #ifdef PRINT_SEQUENTIAL
+    printf("%s end\n\n",filename);
+    fflush(stdout);
+    Mutex_unlock(&lock);
+    #endif
     close_or_die(clientfd);
     return NULL;
 }
 
 int main(int argc, char *argv[]) {
     char *filename;
-    int threads;
+    unsigned int threads;
     
     if (argc != 5) {
         fprintf(stderr, "Usage: %s <host> <port> <filename> <threads>\n", argv[0]);
@@ -99,18 +120,18 @@ int main(int argc, char *argv[]) {
     char *filenames[threads - 1];
 
     Pthread_create(&threadsArr[0], NULL, &send_request, "/spin.cgi?1");
-    for (size_t i = 0; i < threads - 1; i++) {
+    for (unsigned int i = 0; i < threads - 1; i++) {
         filenames[i] = malloc(MAXBUF);
-        sprintf(filenames[i], "%s%zu", filename, threads - 1 - i);
+        sprintf(filenames[i], "%s%d", filename, threads - 1 - i);
     }
 
-    for (size_t i = 1; i < threads; i++)
+    for (unsigned int i = 1; i < threads; i++)
         Pthread_create(&threadsArr[i], NULL, &send_request, filenames[i - 1]);
 
-    for (size_t i = 0; i < threads; i++)
+    for (unsigned int i = 0; i < threads; i++)
         Pthread_join(threadsArr[i], NULL);
 
-    for (size_t i = 0; i < threads - 1; i++)
+    for (unsigned int i = 0; i < threads - 1; i++)
         free(filenames[i]);
 
     exit(0);
