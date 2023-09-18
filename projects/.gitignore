@@ -4,3 +4,4 @@
 !.gitignore
 !*.patch
 !*.sh
+!orig_xv6_tree.txt
