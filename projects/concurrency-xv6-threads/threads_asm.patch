@@ -1,5 +1,5 @@
 diff --git a/Makefile b/Makefile
-index 09d790c..f7c3903 100644
+index 09d790c..896396c 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -29,7 +29,7 @@ OBJS = \
@@ -46,15 +46,6 @@ index 09d790c..f7c3903 100644
  endif
  QEMUOPTS = -drive file=fs.img,index=1,media=disk,format=raw -drive file=xv6.img,index=0,media=disk,format=raw -smp $(CPUS) -m 512 $(QEMUEXTRA)
  
-@@ -250,7 +251,7 @@ qemu-nox-gdb: fs.img xv6.img .gdbinit
- EXTRA=\
- 	mkfs.c ulib.c user.h cat.c echo.c forktest.c grep.c kill.c\
- 	ln.c ls.c mkdir.c rm.c stressfs.c usertests.c wc.c zombie.c\
--	printf.c umalloc.c\
-+	printf.c umalloc.c test_thread.c\
- 	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list\
- 	.gdbinit.tmpl gdbutil\
- 
 diff --git a/defs.h b/defs.h
 index 82fb982..4336709 100644
 --- a/defs.h
@@ -69,29 +60,33 @@ index 82fb982..4336709 100644
  int             kill(int);
  struct cpu*     mycpu(void);
 diff --git a/proc.c b/proc.c
-index 806b1b1..c3406d1 100644
+index 806b1b1..1685038 100644
 --- a/proc.c
 +++ b/proc.c
-@@ -161,17 +161,26 @@ growproc(int n)
+@@ -161,8 +161,12 @@ growproc(int n)
    uint sz;
    struct proc *curproc = myproc();
  
 +  int return_value = 0;
-+  acquire(&ptable.lock);
    sz = curproc->sz;
    if(n > 0){
++    /*
++    page fault
++    */
      if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0)
--      return -1;
-+      return_value = -1;
+       return -1;
    } else if(n < 0){
-     if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0)
--      return -1;
-+      return_value = -1;
+@@ -170,8 +174,19 @@ growproc(int n)
+       return -1;
    }
    curproc->sz = sz;
 +
 +  struct proc *p;
++  acquire(&ptable.lock);
 +  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
++    /*
++    correspond to the clone config
++    */
 +    if (p->parent == curproc && p->pgdir == curproc->pgdir)
 +      p->sz = curproc->sz;  // update threads process memory size
 +  }
@@ -102,7 +97,7 @@ index 806b1b1..c3406d1 100644
  }
  
  // Create a new process copying p as the parent.
-@@ -221,6 +230,94 @@ fork(void)
+@@ -221,6 +236,119 @@ fork(void)
    return pid;
  }
  
@@ -115,14 +110,26 @@ index 806b1b1..c3406d1 100644
 +  if ((np = allocproc()) == 0) {
 +    return -1;
 +  }
-+
++  /*
++  See https://www.computerworld.com/article/2585661/processes-and-threads.html#:~:text=A%20thread%20is%20like%20a,is%20created%20for%20each%20user.
++  thread is one special child process which shares the same address space with the parent. So `np->pgdir = curproc->pgdir;`
++  Also see README
++  > When creating a thread (as clone() does), you'll want the new child thread to be in the same address space as the parent
++  */
 +  np->pgdir = curproc->pgdir;  // same page table
 +  np->parent = curproc;
 +  *np->tf = *curproc->tf;
 +
++  /*
++  stores in tf maybe due to README
++  > new kernel thread
++  */
 +  np->tf->eip = (uint)fcn;  // eip register: instruction pointer
 +  // copy args to stack
 +  np->usp = stack;
++  /*
++  The stack should be one page in size and page-aligned.
++  */
 +  uint *sp = stack + PGSIZE;
 +  sp--;
 +  *sp = (uint)arg2;
@@ -162,6 +169,9 @@ index 806b1b1..c3406d1 100644
 +    // Scan through table looking for exited thread.
 +    havethread = 0;
 +    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
++      /*
++      This call waits for a child thread that shares the address space with the calling process to exit.
++      */
 +      if(p->parent != curproc || p->pgdir != curproc->pgdir)
 +        continue;
 +      havethread = 1;
@@ -171,7 +181,14 @@ index 806b1b1..c3406d1 100644
 +        *stack = p->usp;
 +        kfree(p->kstack);
 +        p->kstack = 0;
++        /*
++        IMHO, it is freed by the shell when freeing its parent instead of wait
++        See "free pgdir"
++        */
 +        // freevm(p->pgdir);  free it at wait()
++        /*
++        Similar to wait does.
++        */
 +        p->pid = 0;
 +        p->parent = 0;
 +        p->name[0] = 0;
@@ -179,6 +196,9 @@ index 806b1b1..c3406d1 100644
 +        p->state = UNUSED;
 +        p->usp = 0;
 +        release(&ptable.lock);
++        /*
++        It returns the PID of waited-for child or -1 if none.
++        */
 +        return pid;
 +      }
 +    }
@@ -197,7 +217,7 @@ index 806b1b1..c3406d1 100644
  // Exit the current process.  Does not return.
  // An exited process remains in the zombie state
  // until its parent calls wait() to find out it exited.
-@@ -249,12 +346,12 @@ exit(void)
+@@ -249,12 +377,15 @@ exit(void)
  
    acquire(&ptable.lock);
  
@@ -208,11 +228,14 @@ index 806b1b1..c3406d1 100644
    // Pass abandoned children to init.
    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
 -    if(p->parent == curproc){
++    /*
++    Also, exit() should work as before but for both processes and threads; little change is required here.
++    */
 +    if(p->parent == curproc && p->pgdir != curproc->pgdir){
        p->parent = initproc;
        if(p->state == ZOMBIE)
          wakeup1(initproc);
-@@ -275,13 +372,13 @@ wait(void)
+@@ -275,13 +406,17 @@ wait(void)
    struct proc *p;
    int havekids, pid;
    struct proc *curproc = myproc();
@@ -224,29 +247,49 @@ index 806b1b1..c3406d1 100644
      havekids = 0;
      for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
 -      if(p->parent != curproc)
++      /*
++      README
++      > int wait() should wait for a child process that does not share the address space with this process.
++      */
 +      if(p->parent != curproc || p->pgdir == curproc->pgdir)
          continue;
        havekids = 1;
        if(p->state == ZOMBIE){
-@@ -289,7 +386,21 @@ wait(void)
+@@ -289,7 +424,37 @@ wait(void)
          pid = p->pid;
          kfree(p->kstack);
          p->kstack = 0;
 -        freevm(p->pgdir);
 +        // free page table if this is last reference to it
-+        struct proc *q, *last_ref = 0;
++        struct proc *q, *last_ref = p;
 +        for (q = ptable.proc; q < &ptable.proc[NPROC]; q++) {
 +          if (q != p && q->pgdir == p->pgdir) {
++            /*
++            Here 
++            1. EMBRYO not taken in account because `allocproc` doesn't assign pgdir.
++              Also it is only one intermediate state.
++            2. SLEEPING, RUNNABLE, RUNNING are all processes which may be used in the future / in current.
++            So should not free them.
++            3. fork (new pgdir which won't overlap with others) and 
++            zombie changed into UNUSED in join (pgdir = 0)
++            So it is safe to free them.
++            4. the "last reference" make `p->pgdir` safe to free.
++            */
 +            if (q->state == UNUSED || q->state == ZOMBIE) {
 +              last_ref = q;
 +            } else {
++              /*
++              should not free them. See above "SLEEPING ...".
++              */
 +              last_ref = 0;
 +              break;
 +            }
 +          }
 +        }
-+        if (last_ref == p)
++        if (last_ref == p){
++          cprintf("free pgdir\n");
 +          freevm(p->pgdir);
++        }
 +        p->pgdir = 0;
          p->pid = 0;
          p->parent = 0;
@@ -296,7 +339,7 @@ index bc5f356..6b757d1 100644
 +#define SYS_clone  22
 +#define SYS_join   23
 diff --git a/sysproc.c b/sysproc.c
-index 0686d29..8df0eee 100644
+index 0686d29..88c1d38 100644
 --- a/sysproc.c
 +++ b/sysproc.c
 @@ -89,3 +89,21 @@ sys_uptime(void)
@@ -317,16 +360,16 @@ index 0686d29..8df0eee 100644
 +
 +int sys_join(void) {
 +  void **stack;
-+  if (argptr(0, (char **)&stack, sizeof(void *)) < 0)
++  if (argptr(0, (char **)&stack, sizeof(void **)) < 0)
 +    return -1;
 +  return join(stack);
 +}
 diff --git a/test_thread.c b/test_thread.c
 new file mode 100644
-index 0000000..6c095ce
+index 0000000..d90c20b
 --- /dev/null
 +++ b/test_thread.c
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,137 @@
 +#include "types.h"
 +#include "user.h"
 +
@@ -335,6 +378,10 @@ index 0000000..6c095ce
 +
 +#include "spinlock.h"
 +#define USE_LOCK
++#define USE_FORK
++#define TEST_THREAD_STACK
++#define USE_LOCAL
++
 +/*
 +static default 0 
 +https://www.ibm.com/docs/ssw_ibm_i_73/rzarg/static_init.htm
@@ -391,6 +438,10 @@ index 0000000..6c095ce
 +  printf(1, "First arg: %s, second arg: %d\n", s, *i);
 +  printf(1, "best_num in thread: %d\n", best_num);
 +  best_num = *i;
++  #ifdef TEST_THREAD_STACK
++  int best_num = 66;
++  printf(1, "best_num in thread stack: %d\n", best_num);
++  #endif
 +  printf(1, "thread pid: %d\n", getpid());
 +  exit();
 +}
@@ -405,8 +456,15 @@ index 0000000..6c095ce
 +
 +void malloc_func(int *size, int *loop) {
 +  int *arr;
++  #ifdef USE_LOCAL
++  int local_loop = *loop;
++  int local_size = *size;
++  for (int i = 0; i < local_loop; i++) {
++    arr = malloc(local_size * sizeof(int));
++  #else
 +  for (int i = 0; i < *loop; i++) {
 +    arr = malloc(*size * sizeof(int));
++  #endif
 +    arr[0] = 1;
 +    free(arr);
 +  }
@@ -429,6 +487,15 @@ index 0000000..6c095ce
 +  int loop2 = 200;
 +  thread_create((void (*)(void *, void *))count_func, &lock, &loop1);
 +  thread_create((void (*)(void *, void *))count_func, &lock, &loop2);
++  #ifdef USE_FORK
++  int child = fork();
++  if (child==0) {
++    printf(1, "child\n");
++    exit();
++  }else {
++    wait(); 
++  }
++  #endif
 +  thread_join();
 +  thread_join();
 +  printf(1, "number: %d\n", number);
@@ -453,7 +520,7 @@ index e4adf64..286903b 100644
 +  int turn;
 +} lock_t;
 diff --git a/ulib.c b/ulib.c
-index 8e1e1a2..e643a83 100644
+index 8e1e1a2..373c79a 100644
 --- a/ulib.c
 +++ b/ulib.c
 @@ -3,6 +3,7 @@
@@ -464,7 +531,7 @@ index 8e1e1a2..e643a83 100644
  
  char*
  strcpy(char *s, const char *t)
-@@ -104,3 +105,30 @@ memmove(void *vdst, const void *vsrc, int n)
+@@ -104,3 +105,35 @@ memmove(void *vdst, const void *vsrc, int n)
      *dst++ = *src++;
    return vdst;
  }
@@ -482,6 +549,11 @@ index 8e1e1a2..e643a83 100644
 +int thread_join() {
 +  void *stack;
 +  int r = join(&stack);
++  /*
++  README
++  > The location of the child's user stack is copied into the argument stack (which can then be freed).
++  stack is assigned to thread stack in join.
++  */
 +  free(stack);
 +  return r;
 +}
