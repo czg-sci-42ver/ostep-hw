@@ -323,10 +323,10 @@ index 0686d29..8df0eee 100644
 +}
 diff --git a/test_thread.c b/test_thread.c
 new file mode 100644
-index 0000000..09cfa7a
+index 0000000..6c095ce
 --- /dev/null
 +++ b/test_thread.c
-@@ -0,0 +1,108 @@
+@@ -0,0 +1,113 @@
 +#include "types.h"
 +#include "user.h"
 +
@@ -334,6 +334,7 @@ index 0000000..09cfa7a
 +int number = 0;
 +
 +#include "spinlock.h"
++#define USE_LOCK
 +/*
 +static default 0 
 +https://www.ibm.com/docs/ssw_ibm_i_73/rzarg/static_init.htm
@@ -368,8 +369,10 @@ index 0000000..09cfa7a
 +  /*
 +  borrow the lock from spinlock.c acquire and release
 +  */
++#ifdef USE_LOCK
 +  while(xchg(&global_lock, 1) != 0)
 +    ;
++#endif
 +  // int myturn = __atomic_fetch_add(&lock->ticket, 1, __ATOMIC_SEQ_CST);
 +  int myturn;
 +  asm("mov %1,%0\n\t"
@@ -377,7 +380,9 @@ index 0000000..09cfa7a
 +    : "+r" (myturn), "+m" (lock->ticket)::
 +    );
 +  printf(1, "myturn: %d\n",myturn); // this will destroy the atomic property.
++#ifdef USE_LOCK
 +  asm volatile("movl $0, %0" : "+m" (global_lock) : );
++#endif
 +  while (lock->turn != myturn)
 +    ; // spin
 +}
