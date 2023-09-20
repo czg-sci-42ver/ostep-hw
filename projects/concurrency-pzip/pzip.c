@@ -118,6 +118,13 @@ static void *compress(void *arg) {
     }
     if (head == NULL) {
       // same characters
+      /*
+      note 1
+      > Think about what can be done in parallel, and what must be done serially by a single thread
+      1. here results are intended to be parallel and 
+      2. the true compression in the main thread is not because the file has state which needs strict order so can't be in parallel.
+      (maybe still can, but it needs to split in parts and each part is in parallel with each other, at the end one thread connects them.) 
+      */
       current_work->results = create_result(previous_count, previous_character);
     } else {
       current_work->results = head;
@@ -231,6 +238,9 @@ int main(int argc, char *argv[]) {
       /*
       although we can let each `works` thread use one independent `mutex` to manipulate with something like
       `works[fill_ptr-fill_ptr%np+thread_id]`. then `jobs` threads also need to be np instead of one here.
+      so note 1
+      > what happens if one thread runs more slowly than another? Does the compression give more work to faster threads?
+      isn't implemented here (also caused by the single mutex, so it is not truly parallel)
       */
       Sem_wait(&mutex);
 
@@ -299,7 +309,10 @@ int main(int argc, char *argv[]) {
     Result *result;
     result = works[i].results;
     /*
-    take the very first, first, last, the last of whole special cases in account.
+    1. take the very first, first, last, the last of whole special cases in account.
+    2. note 3
+    > making the core compression loop as CPU efficient as possible is needed for high performance.
+    no need for unnecessary locks/conds.
     */
     while (result != NULL) {
       /*

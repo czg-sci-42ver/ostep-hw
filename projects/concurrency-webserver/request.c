@@ -115,6 +115,9 @@ int request_serve_dynamic(int fd, char *filename, char *cgiargs) {
         extern char **environ;                       // defined by libc 
         execve_or_die(filename, argv, environ);
     } else {
+        /*
+        > the parent process in the web server explicitly waits for the child CGI process to complete before continuing and accepting more HTTP requests
+        */
 	    wait_or_die(NULL);
     }
 

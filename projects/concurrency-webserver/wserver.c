@@ -89,6 +89,9 @@ int main(int argc, char *argv[]) {
 	Zem_init(&mutex, 1);
 	pthread_t threadsArr[threads];
 
+	/*
+	In your implementation, you must have a master thread that begins by creating a pool of worker threads
+	*/
 	for (int i = 0; i < threads; i++)
 		Pthread_create(&threadsArr[i], NULL, &workerThread, buffer);
 
@@ -108,6 +111,7 @@ int main(int argc, char *argv[]) {
 	}
 	/*
 	protect the buffer
+	> Note that the master thread and the worker threads are in a producer-consumer relationship and require that their accesses to the shared buffer be synchronized.
 	*/
 	Zem_wait(&mutex);
 
