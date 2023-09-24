@@ -21,6 +21,9 @@ int main(int argc, char *argv[]) {
 
     lines = atoi(argv[1]);
     lines *= -1;
+    /*
+    due to the following "\n" count
+    */
     lines++;
     pathname = argv[2];
 
@@ -37,17 +40,29 @@ int main(int argc, char *argv[]) {
     while (lines > 0) {
         if (read(fd, buff, 1) == -1)
             handle_error("read");
-        if (buff[0] == '\n')
+        if (buff[0] == '\n'){
+            printf("line end\n");
             lines--;
+        }
+        /*
+        scan all characters of the file.
+        "-2" because the above read after seek of "-1".
+        */
         offset = lseek(fd, -2, SEEK_CUR);
         if (offset == -1)
             break;
     }
 
-    if (offset > 0 || lines == 0) {
+    // if (offset > 0 || lines == 0) {
+    if (lines == 0) {
+        printf("offset: %d\n",offset);
+        /*
+        reset the above search offset "lseek(fd, -2, SEEK_CUR)"
+        */
         if (lseek(fd, 2, SEEK_CUR) == -1)
             handle_error("lseek");
     } else {
+        printf("offset: %d outside of the range of the file\n",offset);
         if (lseek(fd, 0, SEEK_SET) == -1)
             handle_error("lseek");
     }

@@ -19,6 +19,9 @@ int main(int argc, char *argv[]) {
     }
 
     printf("File type:                ");
+    /*
+    See `man 2 stat` for example same as here.
+    */
     switch (sb.st_mode & S_IFMT) {
         case S_IFBLK:
             printf("block device\n");
@@ -47,7 +50,7 @@ int main(int argc, char *argv[]) {
     }
 
     printf("I-node number:            %ld\n", (long) sb.st_ino);
-    printf("Mode:                     %lo (octal)\n", (unsigned long) sb.st_mode);
+    printf("Mode:                     %04lo (octal)\n", (unsigned long) sb.st_mode & (~S_IFMT));
     printf("Link count:               %ld\n", (long) sb.st_nlink);
     printf("Ownership:                UID=%ld    GID=%ld\n", (long) sb.st_uid, (long) sb.st_gid);
     printf("Preferred I/O block size: %ld bytes\n", (long) sb.st_blksize);
