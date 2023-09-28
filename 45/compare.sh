@@ -5,6 +5,7 @@ rm $FILENAME
 TESTLOOP=64
 
 function create_file {
+	# echo "from $1 to $2"
     for i in $( seq $1 $2 )
     do
         echo -n 0 >> $FILENAME

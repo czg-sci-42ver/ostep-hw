@@ -20,6 +20,9 @@ int main(int argc, char *argv[]) {
         handle_error("open");
 
     while ((count = read(fd, buff, 1)) != -1 && count != 0) {
+        /*
+        just same as the ./checksum.py
+        */
         if (buff[0] != '\n') {
             fletcher_a = (buff[0] - '0' + fletcher_a) % 255;
             fletcher_b = (fletcher_a + fletcher_b) % 255;

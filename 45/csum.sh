@@ -17,3 +17,4 @@ echo ""
 echo "add a line" >> $FILENAME
 
 ./check-csum.out  $FILENAME $CHECKSUM
+# here not compare between corrupted and non-corrupted ones.
