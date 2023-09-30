@@ -2,6 +2,7 @@
 #define LIB_H
 /*
 This will make strsep fail.
+i.e. "call to undeclared function 'strsep'; ISO C99 and later do not support implicit function declarations" in clang
 */
 // #define _POSIX_C_SOURCE 201112L    // getnameinfo >= 201112L, sem_timedwait >= 200112L, clock_gettime >= 199309L
 
@@ -343,6 +344,11 @@ UDP_Write(int sfd, char *buffer, int nread, struct sockaddr *peer_addr, int peer
             data = (struct user_data *)io_uring_cqe_get_data(cqe);
             switch (data->io_op) {
                 case IORING_OP_CONNECT:
+                    /*
+                    limit print str len
+                    https://stackoverflow.com/a/63059241/21294350
+                    https://stackoverflow.com/a/2239571/21294350
+                    */
                     printf("send %.*s\n",(int)strlen(BEGIN_STR),BEGIN_STR);
                     fflush(stdout);
                     #ifdef ASYNC_SEQ
