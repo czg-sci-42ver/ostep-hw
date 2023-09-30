@@ -1,4 +1,4 @@
-#include "UDP-lib.h"
+#include "UDP-lib_async.h"
 
 // #define LOG_SIZE
 
@@ -33,7 +33,7 @@ main(int argc, char *argv[])
         }
 
         printf("Received %zd bytes: %s\n", nread, buf);
-        strncpy(buf, "hello", 6);
+        strncpy(buf, "hello hello", 12);
     }
 
     close(sfd);
