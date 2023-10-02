@@ -7,7 +7,8 @@ import numpy as np
 
 matrix = np.loadtxt(sys.stdin)
 
-plt.bar(matrix[:, 1], matrix[:, 0], color='orange', width=0.1)
+# plt.bar(matrix[:, 1], matrix[:, 0], color='orange', width=0.1)
+plt.plot(matrix[:, 1], matrix[:, 0], color='orange')
 plt.margins(0)
 # plt.xticks(np.arange(10)/10, np.arange(10)/10)
 # plt.tick_params(axis='x', which='major', labelsize=5)
