@@ -19,7 +19,6 @@
 // #define NOT_MMAP_COPY
 #define REREAD
 #define KEEP_ORIGINAL_FILE
-#define ALLOW_SAME_INPUT_OUTPUT
 /*
 based on mkfs.c `wsect(i, zeroes);`
 */
@@ -161,13 +160,68 @@ xint(uint x)
 
 #define DE_SIZE 16
 void rsect(void *imgp,void *buf,uint sec,uint to_read_num){
+  printf("read from %p with sec %d\n",imgp + sec * BSIZE,sec);
   memmove(buf, imgp + sec * BSIZE,
                   to_read_num);
+  char big_buf[IMG_SIZE];
+  memmove(big_buf, imgp, IMG_SIZE);
+  /*
+  https://stackoverflow.com/a/28307254/21294350
+  */
+  asm volatile ("mfence" ::: "memory");
+  struct dirent *tmp_dir,*tmp_buf,*tmp_big_buf;
+  for (int i=32; i<272+1; i+=DE_SIZE) {
+    tmp_buf=(struct dirent*)(buf+i-DE_SIZE);
+    tmp_dir=(struct dirent*)(imgp+60*BSIZE+i-DE_SIZE);
+    tmp_big_buf=(struct dirent*)(big_buf+60*BSIZE+i-DE_SIZE);
+    printf("data (%d,%s) to (%d,%s)\n",tmp_dir->inum,tmp_dir->name,tmp_buf->inum,tmp_buf->name);
+    printf("tmp_big_buf data (%d,%s)\n",tmp_big_buf->inum,tmp_big_buf->name);
+    if(tmp_big_buf->inum!=tmp_dir->inum){
+      printf("unequal inum\n");
+    }
+    assert(tmp_big_buf->inum==tmp_dir->inum);
+    if(tmp_big_buf->name==tmp_dir->name){
+      printf("unequal name\n");
+    }
+    fflush(stdout);
+  }
+  /*
+  force update 
+  */
+  // if (msync(imgp, IMG_SIZE, MS_SYNC) == -1)
+  // {
+  //     perror("Could not sync the file to disk");
+  // } 
 }
 
 void wsect(void *imgp,void *buf,uint sec,uint to_write_num){
+  printf("move to %p with %d bytes\n",imgp + sec * BSIZE,to_write_num);
   memmove(imgp + sec * BSIZE,buf,
                   to_write_num);
+
+  char big_buf[IMG_SIZE];
+  memmove(big_buf, imgp, IMG_SIZE);
+  struct dirent *tmp_dir,*tmp_buf,*tmp_big_buf;
+  for (int i=32; i<272+1; i+=DE_SIZE) {
+    tmp_buf=(struct dirent*)(buf+i-DE_SIZE);
+    tmp_dir=(struct dirent*)(imgp+60*BSIZE+i-DE_SIZE);
+    tmp_big_buf=(struct dirent*)(big_buf+60*BSIZE+i-DE_SIZE);
+    printf("data (%d,%s) to (%d,%s)\n",tmp_dir->inum,tmp_dir->name,tmp_buf->inum,tmp_buf->name);
+    printf("tmp_big_buf data (%d,%s)\n",tmp_big_buf->inum,tmp_big_buf->name);
+    if(tmp_big_buf->inum!=tmp_dir->inum){
+      printf("unequal inum\n");
+    }
+    assert(tmp_big_buf->inum==tmp_dir->inum);
+    if(tmp_big_buf->name==tmp_dir->name){
+      printf("unequal name\n");
+    }
+    fflush(stdout);
+  }
+
+  // if (msync(imgp, IMG_SIZE, MS_SYNC) == -1)
+  // {
+  //     perror("Could not sync the file to disk");
+  // }                
 }
 
 void
@@ -244,7 +298,7 @@ iappend(struct dinode* inodes_ptr, void *imgp, uint save_dir_inum, void *xp, int
   inodes_ptr[save_dir_inum]=din;
   char tmp_buf[BSIZE];
   rsect(imgp,tmp_buf,save_dir_inum,sizeof(tmp_buf));
-  printf("update to size %d with imgp related %d\n",inodes_ptr[save_dir_inum].size,((struct dinode*)(imgp + 32 * BSIZE+sizeof(struct dinode)*2))[save_dir_inum].size);
+  printf("update to size %d\n",inodes_ptr[save_dir_inum].size);
 }
 
 /*
@@ -307,9 +361,6 @@ int main(int argc, char *argv[]) {
       fprintf(stderr, "need -r\n");
       // exit(EXIT_FAILURE);
     }
-    #ifndef ALLOW_SAME_INPUT_OUTPUT 
-    assert(strstr(argv[2], "fs.img.repair")==NULL);
-    #endif
     repair=1;
     img_file=fopen(argv[2], "r+");
   }
@@ -332,32 +383,8 @@ int main(int argc, char *argv[]) {
   }
   void *origin_imgp = calloc(IMG_SIZE,1);
   memmove(origin_imgp, imgp, IMG_SIZE);
-
   #ifdef KEEP_ORIGINAL_FILE
-  char target_file[200]={0};
-  strncpy(target_file, argv[2], strlen(argv[2]));
-  strncat(target_file,".repair",strlen(".repair")+1);
-  int file_fd=open(target_file, O_RDWR|O_CREAT|O_TRUNC, 0666);
-  assert(file_fd!=-1);
-  ftruncate(file_fd,IMG_SIZE);
-  char *dst;
-  if ((dst = mmap(NULL, IMG_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, file_fd, 0))==MAP_FAILED) {
-    fprintf(stderr, "mmap failed\n");
-  }
-  assert(dst!=imgp);
-  memmove(dst, imgp, IMG_SIZE);
-  if (msync(dst, IMG_SIZE, MS_SYNC) == -1)
-  {
-    perror("Could not sync the file to disk");
-  }
-  if (memcmp(dst, imgp, IMG_SIZE)) {
-    printf("img has been repaired\n");
-  }
-  if (munmap(imgp, IMG_SIZE) == -1) {
-    fprintf(stderr, "munmap failed\n");
-    // exit(EXIT_FAILURE);
-  }
-  imgp=dst;
+  
   #endif
   struct superblock sb;
   /*
@@ -563,12 +590,9 @@ int main(int argc, char *argv[]) {
       if (repair) {
         printf("begin repair\n");
         mov_lost_found(imgp,inodes,j,lost_found_dir_inum);
-        printf("\nafter each repair\n");
-        struct dirent* tmp_dir;
-        for (int i=32; i<272+1; i+=DE_SIZE) {
-          tmp_dir=imgp+60*BSIZE+i-DE_SIZE;
-          printf("data (%d,%s)",tmp_dir->inum,tmp_dir->name);
-          fflush(stdout);
+        printf("after each repair\n");
+        for (int i=32; i<272+1; i+=16) {
+          printf("data (%d,%s)\n",((struct dirent*)imgp+60*BSIZE+i-16)->inum,((struct dirent*)imgp+60*BSIZE+i-16)->name);
         }
       }
       // exit(EXIT_FAILURE);
@@ -588,25 +612,10 @@ int main(int argc, char *argv[]) {
       // exit(EXIT_FAILURE);
     }
   }
-  #ifndef KEEP_ORIGINAL_FILE
-  int file_fd=0;
-  #endif
+
   if (repair) {
-    // memmove(imgp + sb.inodestart * BSIZE,inodes, sizeof(inodes));
-    /*
-    avoid nlink duplicate decrement.
-    */
-    void *inode_target=imgp + sb.inodestart * BSIZE+sizeof(struct dinode)*lost_found_dir_inum;
-    void *inode_src=inodes+lost_found_dir_inum;
-    if(inodes+lost_found_dir_inum==&inodes[2]){
-      printf("lost_found_dir_inum %d",lost_found_dir_inum);
-    }
-    printf("byte offset %ld\n",(void*)(&inodes[2].size)-(void*)(&inodes[2]));
-    printf("check size %d with imgp related %d\n",inodes[2].size,((struct dinode*)(imgp + 32 * BSIZE+sizeof(struct dinode)*2))->size);
-    printf("inodestart %d lost_found_dir_inum:%d\n",sb.inodestart,lost_found_dir_inum);
-    // assert(memcmp(inode_target, inode_src, sizeof(struct dinode))!=0);
-    memmove(inode_target,inode_src, sizeof(struct dinode));
-    if (memcmp(origin_imgp, imgp, IMG_SIZE)) {
+    memmove(imgp + sb.inodestart * BSIZE,inodes, sizeof(inodes));
+    if (strncmp(origin_imgp, imgp, IMG_SIZE)) {
       printf("img has been repaired\n");
     }
     struct dirent* tmp_dir;
@@ -616,15 +625,15 @@ int main(int argc, char *argv[]) {
       fflush(stdout);
     }
     printf("\n");
-    #ifndef KEEP_ORIGINAL_FILE
     /*same as mkfs.c*/
-    file_fd=open("fs.img.repair", O_RDWR|O_CREAT|O_TRUNC, 0666);
+    int file_fd=open("fs.img.repair", O_RDWR|O_CREAT|O_TRUNC, 0666);
     assert(file_fd!=-1);
     #ifdef NOT_MMAP_COPY
     /*
     not use sizeof which may stop at ending 0.
     */
     write(file_fd, imgp, IMG_SIZE);
+    assert(close(file_fd)!=-1);
     #else
     /*
     https://stackoverflow.com/a/14242446/21294350
@@ -655,10 +664,7 @@ int main(int argc, char *argv[]) {
     {
         perror("Could not sync the file to disk");
     }
-    /*
-    msync no use for writing to the file.
-    */
-    // assert(write(file_fd, dst, IMG_SIZE)!=-1);
+    assert(write(file_fd, dst, IMG_SIZE)!=-1);
     /*
     https://stackoverflow.com/a/22679209/21294350
     still use write
@@ -668,16 +674,7 @@ int main(int argc, char *argv[]) {
       // exit(EXIT_FAILURE);
     }
     #endif
-    #endif
   }
-  #ifdef KEEP_ORIGINAL_FILE
-  if (msync(imgp, IMG_SIZE, MS_SYNC) == -1)
-  {
-      perror("Could not sync the file to disk");
-  }
-  assert(write(file_fd, imgp, IMG_SIZE)!=-1);
-  #endif
-  
 
   if (munmap(imgp, IMG_SIZE) == -1) {
     fprintf(stderr, "munmap failed\n");
@@ -688,5 +685,4 @@ int main(int argc, char *argv[]) {
     // exit(EXIT_FAILURE);
   }
   free(origin_imgp);
-  assert(close(file_fd)!=-1);
 }
