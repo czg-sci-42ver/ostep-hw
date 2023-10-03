@@ -8,7 +8,7 @@ else
 endif
 #CFLAGS=-g -O0 -fno-tree-fre
 CFLAGS=-g
-all: xcheck.out xcheck_contest_1.out xcheck_contest_2.out xcheck_contest_3.out
+all: xcheck.out xcheck_contest_1.out xcheck_contest_2.out xcheck_contest_3.out xcheck_contest_3_same_input_output_files.out
 	@echo ${HEADER}
 %.out: %.c ${HEADER}
 	$(CC) $(CFLAGS) -o $@ $^

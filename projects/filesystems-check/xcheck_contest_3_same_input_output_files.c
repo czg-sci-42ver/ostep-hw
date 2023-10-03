@@ -20,6 +20,7 @@
 #define REREAD
 #define KEEP_ORIGINAL_FILE
 #define ALLOW_SAME_INPUT_OUTPUT
+#define DEBUG_DUP_MMAP
 /*
 based on mkfs.c `wsect(i, zeroes);`
 */
@@ -160,9 +161,6 @@ xint(uint x)
 #define min(a, b) ((a) < (b) ? (a) : (b))
 
 #define DE_SIZE 16
-/*
-not use sizeof(buf) which will return 8 always which is not as expected for the `char buf[BSIZE]` size.
-*/
 void rsect(void *imgp,void *buf,uint sec,uint to_read_num){
   memmove(buf, imgp + sec * BSIZE,
                   to_read_num);
@@ -186,6 +184,8 @@ iappend(struct dinode* inodes_ptr, void *imgp, uint save_dir_inum, void *xp, int
 
   din=inodes_ptr[save_dir_inum];
   off = din.size;
+  printf("data_end_block:%d\n",data_end_block);
+  // printf("append inum %d at off %d sz %d\n", inum, off, n);
   while(n > 0){
     fbn = off / BSIZE;
     assert(fbn < MAXFILE);
@@ -211,14 +211,41 @@ iappend(struct dinode* inodes_ptr, void *imgp, uint save_dir_inum, void *xp, int
     /*
     write data
     */
+    printf("sizeof(buf):%ld\n",sizeof(buf));
+    struct dirent*tmp=(struct dirent*)(buf + off - (fbn * BSIZE)-n1);
+    printf("read last write with info (%d,%s) at %d block off: %d fbn:%d with data from imgp+%d*BSIZE+%d-%d\n"\
+    ,tmp->inum,tmp->name,x,off - (fbn * BSIZE)-n1,fbn,x,off,(fbn * BSIZE)+n1);
     bcopy(p, buf + off - (fbn * BSIZE), n1);
+    printf("write with info (%d,%s) at %d block off: %d fbn:%d\nresult (%d,%s)\n"\
+    ,((struct dirent*)p)->inum,((struct dirent*)p)->name,x,off - (fbn * BSIZE),fbn\
+    ,((struct dirent*)(buf + off - (fbn * BSIZE)))->inum,((struct dirent*)(buf + off - (fbn * BSIZE)))->name);
     wsect(imgp,buf,x,sizeof(buf));
+    #ifdef REREAD
+    char tmp_buf[BSIZE];
+    rsect(imgp,tmp_buf,x,sizeof(tmp_buf));
+    tmp=(struct dirent*)(tmp_buf + off - (fbn * BSIZE));
+    printf("reread last write with info (%d,%s) at %d block off: %d fbn:%d with data from imgp+%d*BSIZE+%d-%d\n"\
+    ,tmp->inum,tmp->name,x,off - (fbn * BSIZE),fbn,x,off,(fbn * BSIZE));
+    #endif
+    tmp=(struct dirent*)(buf + off - (fbn * BSIZE)+n1);
+    printf("to write block with init info (%d,%s) at %d block off: %d fbn:%d\n"\
+    ,tmp->inum,tmp->name,x,off+n1,fbn);
+    struct dirent* tmp_dir;
+    for (int i=32; i<272+1; i+=DE_SIZE) {
+      tmp_dir=imgp+60*BSIZE+i-DE_SIZE;
+      printf("data (%d,%s)",tmp_dir->inum,tmp_dir->name);
+      fflush(stdout);
+    }
+    printf("\ninside iappend\n");
     n -= n1;
     off += n1;
     p += n1;
   }
   din.size = xint(off);
   inodes_ptr[save_dir_inum]=din;
+  char tmp_buf[BSIZE];
+  rsect(imgp,tmp_buf,save_dir_inum,sizeof(tmp_buf));
+  printf("update to size %d with imgp related %d\n",inodes_ptr[save_dir_inum].size,((struct dinode*)(imgp + 32 * BSIZE+sizeof(struct dinode)*2))[save_dir_inum].size);
 }
 
 /*
@@ -238,6 +265,13 @@ void mov_lost_found(void *img_ptr,struct dinode* inodes_ptr,uint inum,uint save_
   */
   strncpy(de.name, "lost_inodes", DIRSIZ);
   iappend(inodes_ptr,img_ptr,save_dir, &de, sizeof(de));
+  printf("inside mov_lost_found\n");
+  struct dirent* tmp_dir;
+  for (int i=32; i<272+1; i+=DE_SIZE) {
+    tmp_dir=img_ptr+60*BSIZE+i-DE_SIZE;
+    printf("data (%d,%s)",tmp_dir->inum,tmp_dir->name);
+    fflush(stdout);
+  }
 }
 
 void trace_parent(void *img_ptr,struct dinode* inodes_ptr,int parent_inum,int leaf_dir_in_subtree){
@@ -297,23 +331,28 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "imgp mmap failed\n");
     // exit(EXIT_FAILURE);
   }
-  #ifdef CHECK_IMGP_MOD
   void *origin_imgp = calloc(IMG_SIZE,1);
   memmove(origin_imgp, imgp, IMG_SIZE);
-  #endif
 
   #ifdef KEEP_ORIGINAL_FILE
   char target_file[200]={0};
   strncpy(target_file, argv[2], strlen(argv[2]));
+  #ifndef ALLOW_SAME_INPUT_OUTPUT 
   strncat(target_file,".repair",strlen(".repair")+1);
+  #endif
   int file_fd=open(target_file, O_RDWR|O_CREAT|O_TRUNC, 0666);
   assert(file_fd!=-1);
   ftruncate(file_fd,IMG_SIZE);
+  #ifdef DEBUG_DUP_MMAP
+  struct superblock sb;
+  memmove(&sb, imgp + BSIZE, sizeof(sb));
+  printf("ninodes %d\n",sb.ninodes);
+  #endif
   char *dst;
   if ((dst = mmap(NULL, IMG_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, file_fd, 0))==MAP_FAILED) {
     fprintf(stderr, "mmap failed\n");
   }
-  // assert(dst!=imgp);
+  assert(dst!=imgp);
   memmove(dst, imgp, IMG_SIZE);
   if (msync(dst, IMG_SIZE, MS_SYNC) == -1)
   {
@@ -322,19 +361,26 @@ int main(int argc, char *argv[]) {
   if (memcmp(dst, imgp, IMG_SIZE)) {
     printf("img has been repaired\n");
   }
+  #ifdef DEBUG_DUP_MMAP
+  memmove(&sb, imgp + BSIZE, sizeof(sb));
+  printf("ninodes %d\n",sb.ninodes);
+  #endif
   if (munmap(imgp, IMG_SIZE) == -1) {
     fprintf(stderr, "munmap failed\n");
     // exit(EXIT_FAILURE);
   }
   imgp=dst;
   #endif
+  #ifndef DEBUG_DUP_MMAP
   struct superblock sb;
+  #endif
   /*
   by `wsect(1, buf)`
   */
   memmove(&sb, imgp + BSIZE, sizeof(sb));
   int data_start = FSSIZE - sb.nblocks; // i.e. start at the `nmeta` location.
   struct dinode inodes[sb.ninodes];
+  printf("ninodes %d\n",sb.ninodes);
   Dir_map maps[sb.ninodes];
   memset(maps, 0, sb.ninodes*sizeof(Dir_map));
   /*
@@ -532,6 +578,13 @@ int main(int argc, char *argv[]) {
       if (repair) {
         printf("begin repair\n");
         mov_lost_found(imgp,inodes,j,lost_found_dir_inum);
+        printf("\nafter each repair\n");
+        struct dirent* tmp_dir;
+        for (int i=32; i<272+1; i+=DE_SIZE) {
+          tmp_dir=imgp+60*BSIZE+i-DE_SIZE;
+          printf("data (%d,%s)",tmp_dir->inum,tmp_dir->name);
+          fflush(stdout);
+        }
       }
       // exit(EXIT_FAILURE);
     }
@@ -560,12 +613,24 @@ int main(int argc, char *argv[]) {
     */
     void *inode_target=imgp + sb.inodestart * BSIZE+sizeof(struct dinode)*lost_found_dir_inum;
     void *inode_src=inodes+lost_found_dir_inum;
+    if(inodes+lost_found_dir_inum==&inodes[2]){
+      printf("lost_found_dir_inum %d",lost_found_dir_inum);
+    }
+    printf("byte offset %ld\n",(void*)(&inodes[2].size)-(void*)(&inodes[2]));
+    printf("check size %d with imgp related %d\n",inodes[2].size,((struct dinode*)(imgp + 32 * BSIZE+sizeof(struct dinode)*2))->size);
+    printf("inodestart %d lost_found_dir_inum:%d\n",sb.inodestart,lost_found_dir_inum);
+    // assert(memcmp(inode_target, inode_src, sizeof(struct dinode))!=0);
     memmove(inode_target,inode_src, sizeof(struct dinode));
-    #ifdef CHECK_IMGP_MOD
     if (memcmp(origin_imgp, imgp, IMG_SIZE)) {
       printf("img has been repaired\n");
     }
-    #endif
+    struct dirent* tmp_dir;
+    for (int i=32; i<272+1; i+=DE_SIZE) {
+      tmp_dir=imgp+60*BSIZE+i-DE_SIZE;
+      printf("data (%d,%s)",tmp_dir->inum,tmp_dir->name);
+      fflush(stdout);
+    }
+    printf("\n");
     #ifndef KEEP_ORIGINAL_FILE
     /*same as mkfs.c*/
     file_fd=open("fs.img.repair", O_RDWR|O_CREAT|O_TRUNC, 0666);
@@ -637,8 +702,6 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "fclose failed\n");
     // exit(EXIT_FAILURE);
   }
-  #ifdef CHECK_IMGP_MOD
   free(origin_imgp);
-  #endif
   assert(close(file_fd)!=-1);
 }
