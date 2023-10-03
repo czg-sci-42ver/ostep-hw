@@ -1,0 +1,153 @@
+diff --git a/Makefile b/Makefile
+index 09d790c..087956d 100644
+--- a/Makefile
++++ b/Makefile
+@@ -76,7 +76,7 @@ AS = $(TOOLPREFIX)gas
+ LD = $(TOOLPREFIX)ld
+ OBJCOPY = $(TOOLPREFIX)objcopy
+ OBJDUMP = $(TOOLPREFIX)objdump
+-CFLAGS = -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer
++CFLAGS = -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -fno-omit-frame-pointer
+ CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
+ ASFLAGS = -m32 -gdwarf-2 -Wa,-divide
+ # FreeBSD ld wants ``elf_i386_fbsd''
+diff --git a/mkfs.c b/mkfs.c
+index 8e011a7..aebe4bf 100644
+--- a/mkfs.c
++++ b/mkfs.c
+@@ -16,6 +16,7 @@
+ #endif
+ 
+ #define NINODES 200
++#define ERROR_IMG
+ 
+ // Disk layout:
+ // [ boot block | sb block | log | inode blocks | free bit map | data blocks ]
+@@ -64,6 +65,26 @@ xint(uint x)
+   return y;
+ }
+ 
++void create_lost_found(uint parent_inum){
++  int dir_inum = ialloc(T_DIR);
++  struct dirent de;
++
++  bzero(&de, sizeof(de));
++  de.inum = xshort(dir_inum);
++  strcpy(de.name, ".");
++  iappend(dir_inum, &de, sizeof(de));
++
++  bzero(&de, sizeof(de));
++  de.inum = xshort(parent_inum);
++  strcpy(de.name, "..");
++  iappend(dir_inum, &de, sizeof(de));
++
++  bzero(&de, sizeof(de));
++  de.inum = xshort(dir_inum);
++  strncpy(de.name, "lost_found", DIRSIZ);
++  iappend(ROOTINO, &de, sizeof(de));
++}
++
+ int
+ main(int argc, char *argv[])
+ {
+@@ -127,6 +148,8 @@ main(int argc, char *argv[])
+   strcpy(de.name, "..");
+   iappend(rootino, &de, sizeof(de));
+ 
++  create_lost_found(rootino);
++
+   for(i = 2; i < argc; i++){
+     assert(index(argv[i], '/') == 0);
+ 
+@@ -147,7 +170,14 @@ main(int argc, char *argv[])
+     bzero(&de, sizeof(de));
+     de.inum = xshort(inum);
+     strncpy(de.name, argv[i], DIRSIZ);
++    #ifdef ERROR_IMG
++    /*
++    `wsect(1, buf);` skips block 0.
++    */
++    iappend(0, &de, sizeof(de));
++    #else
+     iappend(rootino, &de, sizeof(de));
++    #endif
+ 
+     while((cc = read(fd, buf, sizeof(buf))) > 0)
+       iappend(inum, buf, cc);
+@@ -231,6 +261,7 @@ ialloc(ushort type)
+   din.nlink = xshort(1);
+   din.size = xint(0);
+   winode(inum, &din);
++  assert(inum<sb.bmapstart);
+   return inum;
+ }
+ 
+@@ -240,7 +271,7 @@ balloc(int used)
+   uchar buf[BSIZE];
+   int i;
+ 
+-  printf("balloc: first %d blocks have been allocated\n", used);
++  printf("balloc: first %d blocks have been allocated\n", used-1);
+   assert(used < BSIZE*8);
+   bzero(buf, BSIZE);
+   for(i = 0; i < used; i++){
+@@ -252,6 +283,7 @@ balloc(int used)
+ 
+ #define min(a, b) ((a) < (b) ? (a) : (b))
+ 
++#define TARGET_NUM (584)
+ void
+ iappend(uint inum, void *xp, int n)
+ {
+@@ -271,23 +303,51 @@ iappend(uint inum, void *xp, int n)
+     if(fbn < NDIRECT){
+       if(xint(din.addrs[fbn]) == 0){
+         din.addrs[fbn] = xint(freeblock++);
++        if (freeblock==TARGET_NUM) {
++          printf("find %d in NDIRECT with inum %d\n",TARGET_NUM,inum);
++        }
+       }
+       x = xint(din.addrs[fbn]);
+     } else {
+       if(xint(din.addrs[NDIRECT]) == 0){
+         din.addrs[NDIRECT] = xint(freeblock++);
++        if (freeblock==TARGET_NUM) {
++          printf("find %d in the last NDIRECT\n",TARGET_NUM);
++        }
+       }
+       rsect(xint(din.addrs[NDIRECT]), (char*)indirect);
+       if(indirect[fbn - NDIRECT] == 0){
++        if (freeblock==TARGET_NUM) {
++          printf("find %d in indirect[%d] with inum %d\n",TARGET_NUM,fbn - NDIRECT,inum);
++        }
+         indirect[fbn - NDIRECT] = xint(freeblock++);
+         wsect(xint(din.addrs[NDIRECT]), (char*)indirect);
+       }
+       x = xint(indirect[fbn-NDIRECT]);
+     }
++    /*
++    here avoid writing more when data to write is less than what the current block can contain. 
++    */
+     n1 = min(n, (fbn + 1) * BSIZE - off);
++    /*
++    when running `iappend(rootino, &de, sizeof(de));` not the first time.
++    */
++    // if ((fbn + 1) * BSIZE - off!=BSIZE){
++    //   fprintf(stderr, "\nfbn:%d off: %d ;n1 -> %d\n", fbn,off,(fbn + 1) * BSIZE - off);
++    // }
++    // if (fbn * BSIZE != off){
++    //   fprintf(stderr, "\n fbn * BSIZE:%d off: %d\n", fbn * BSIZE,off);
++    // }
+     rsect(x, buf);
++    /*
++    here buf is based on one specific block
++    so needs to minus the block addr by `off - (fbn * BSIZE)`
++    */
+     bcopy(p, buf + off - (fbn * BSIZE), n1);
+     wsect(x, buf);
++    /*
++    just based on we having written n1 bytes.
++    */
+     n -= n1;
+     off += n1;
+     p += n1;
