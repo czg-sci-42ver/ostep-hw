@@ -8,17 +8,44 @@
 #include <stdlib.h>   // exit
 #include <string.h>   // memmove, strcmp, memset
 #include <sys/mman.h> // mmap, munmap
+#include <assert.h>
 
+#define BITMAP_DEBUG
+/*
+based on mkfs.c `wsect(i, zeroes);`
+*/
 #define IMG_SIZE (FSSIZE * BSIZE)
+#ifdef BITMAP_DEBUG
+#define BITMAP_LOG
+/*
+`int nbitmap = FSSIZE/(BSIZE*8) + 1;` bitmap blocks
+and each block is `write(fsfd, buf, BSIZE)` bytes
+so byte num -> `(FSSIZE/(BSIZE*8) + 1)*BSIZE`
+*/
+#define NBMAP (FSSIZE / 8+BSIZE)
+#else
+/*
+TODO different from `nbitmap`
+*/
 #define NBMAP FSSIZE / 8
+#endif
 
+/*
+similar to the `iappend` structure.
+*/
 void read_inode_data(struct dinode inode, void *imgp, void *destp, int offset,
                      int size) {
   uint block_num = offset / BSIZE;
+  assert(block_num==0);
   uint addr = 0;
   if (block_num < NDIRECT)
     addr = inode.addrs[block_num];
   else {
+    /*
+    by ` fbn * BSIZE:0 off: 272` output in xv6 `make fs.img`, root is inside the 1st NDIRECT block.
+    this should not happen.
+    */
+    printf("root inode has NINDIRECT\n");
     block_num -= NDIRECT;
     if (block_num < NINDIRECT) {
       uint indirect[NINDIRECT];
@@ -49,14 +76,29 @@ void check_address(uint addr, bool direct, uint data_start, uchar *bmap,
   if (addr == 0)
     return;
   // error 5
-  uint index = addr - data_start;
+  /*
+  `assert(used < BSIZE*8);` where `used` is from block 0 so we should use directly the index although data is from
+  and `freeblock = nmeta;` is from data_start
+  */
+  // uint index = addr - data_start;
+  uint index = addr;
+  #ifdef BITMAP_LOG
+  printf("set index: %d\n",index);
+  #else
+  #endif
+  /*
+  by `buf[i/8] = buf[i/8] | (0x1 << (i%8));`
+  */
   uint b = 0x1 << (index % 8);
+  #ifdef BITMAP_LOG
+  printf("set b: %x\n",b);
+  #endif
   if (!(bmap[index / 8] & b)) {
     fprintf(stderr,
             "ERROR: address used by inode but marked free in bitmap.\n");
     exit(EXIT_FAILURE);
   }
-  if (bmap_mark[index / 8] & b) { // error 6 & 7
+  if (bmap_mark[index / 8] & b) { // error 7 & 8
     if (direct)
       fprintf(stderr, "ERROR: direct address used more than once.\n");
     else
@@ -94,23 +136,46 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
   struct superblock sb;
+  /*
+  by `wsect(1, buf)`
+  */
   memmove(&sb, imgp + BSIZE, sizeof(sb));
-  int data_start = FSSIZE - sb.nblocks;
+  int data_start = FSSIZE - sb.nblocks; // i.e. start at the `nmeta` location.
   struct dinode inodes[sb.ninodes];
+  /*
+  1. access inode by `#define IBLOCK(i, sb)     ((i) / IPB + sb.inodestart)`
+  2. > Note that the version of xv6 we're using does not include the logging feature described in the book; you can safely ignore the parts that pertain to that.
+  although the version used by me contains the log.
+  */
   memmove(inodes, imgp + sb.inodestart * BSIZE, sizeof(inodes));
   uchar bmap[NBMAP];
   uchar bmap_mark[NBMAP] = {0};
   uchar inode_dir[sb.ninodes];
+  /*
+  maybe `nlink`
+  */
   uint dir_links[sb.ninodes];
   memset(inode_dir, 0, sizeof(inode_dir));
   memset(dir_links, 0, sizeof(dir_links));
   memmove(bmap, imgp + sb.bmapstart * BSIZE, sizeof(bmap));
+  /*
+  by `uint inum = freeinode++;`: just increment to access.
+  */
   for (int i = ROOTINO; i < sb.ninodes; i++) {
     struct dinode inode = inodes[i];
+    #ifdef BITMAP_LOG
+    printf("check %dth inode\n",i);
+    #endif
     check_inode_type(inode.type); // error 1
 
     // check inode address range, error 2
+    /*
+    i.e. "Bad blocks" as the chapter fsck says.
+    */
     if (inode.type != 0) {
+      /*
+      by `rsect(xint(din.addrs[NDIRECT]), (char*)indirect);`
+      */
       for (int j = 0; j < NDIRECT + 1; j++) {
         if (j < NDIRECT)
           check_address(inode.addrs[j], true, data_start, bmap, bmap_mark);
@@ -118,10 +183,20 @@ int main(int argc, char *argv[]) {
           uint indirect[NINDIRECT];
           check_address(inode.addrs[NDIRECT], false, data_start, bmap,
                         bmap_mark);
+          /*
+          `BSIZE` by `indirect[fbn - NDIRECT] = xint(freeblock++);`
+          */                        
           memmove(indirect, imgp + inode.addrs[NDIRECT] * BSIZE,
                   sizeof(indirect));
-          for (int k = 0; k < NINDIRECT; k++)
+          /*
+          by `uint indirect[NINDIRECT];` in xv6 and `if (addr == 0)` here to skip unmodified ones.
+          */
+          for (int k = 0; k < NINDIRECT; k++){
+            #ifdef BITMAP_LOG
+            printf("check %dth indirect array\n",k);
+            #endif
             check_address(indirect[k], false, data_start, bmap, bmap_mark);
+          }
         }
       }
     }
@@ -132,6 +207,9 @@ int main(int argc, char *argv[]) {
       bool root_exist = false;
       bool dir_error = false;
       struct dirent de;
+      /*
+      
+      */
       for (int off = 0; off < inode.size; off += sizeof(de)) {
         read_inode_data(inode, imgp, &de, off, sizeof(de));
         if (strcmp(de.name, ".") == 0) {
@@ -163,10 +241,23 @@ int main(int argc, char *argv[]) {
   }
 
   // error 6
+  /*
+  1. here skip the last fake used inode
+  2. due to `for(i = 0; i < used; i++)` in xv6 assumes all the block before the data blocks are used
+  although some inode blocks (or log, bitmap, etc.) may not be assigned data at all.
+    so we only checks the data blocks
+    - Also see `assert(inum<sb.bmapstart);` which also implies not all inode blocks are "assigned data at all."
+    - `nmeta = 2 + nlog + ninodeblocks + nbitmap;` also shows not to care the internal fragmentation in the meta blocks
+  */
+  #ifdef BITMAP_DEBUG
+  for (int j = (data_start/8+1)*8; j < NBMAP; j += 8) {
+  #else
   for (int j = 0; j < NBMAP; j += 8) {
+  #endif
     uint a = bmap[j / 8];
     uint b = bmap_mark[j / 8];
     if (a ^ b) {
+      printf("a,b:%d,%d when j:%d\n",a,b,j);
       fprintf(stderr,
               "ERROR: bitmap marks block in use but it is not in use.\n");
       exit(EXIT_FAILURE);

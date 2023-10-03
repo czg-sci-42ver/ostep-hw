@@ -1,0 +1,84 @@
+diff --git a/Makefile b/Makefile
+index 09d790c..087956d 100644
+--- a/Makefile
++++ b/Makefile
+@@ -76,7 +76,7 @@ AS = $(TOOLPREFIX)gas
+ LD = $(TOOLPREFIX)ld
+ OBJCOPY = $(TOOLPREFIX)objcopy
+ OBJDUMP = $(TOOLPREFIX)objdump
+-CFLAGS = -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer
++CFLAGS = -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -fno-omit-frame-pointer
+ CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
+ ASFLAGS = -m32 -gdwarf-2 -Wa,-divide
+ # FreeBSD ld wants ``elf_i386_fbsd''
+diff --git a/mkfs.c b/mkfs.c
+index 8e011a7..627fa65 100644
+--- a/mkfs.c
++++ b/mkfs.c
+@@ -231,6 +231,7 @@ ialloc(ushort type)
+   din.nlink = xshort(1);
+   din.size = xint(0);
+   winode(inum, &din);
++  assert(inum<sb.bmapstart);
+   return inum;
+ }
+ 
+@@ -240,7 +241,7 @@ balloc(int used)
+   uchar buf[BSIZE];
+   int i;
+ 
+-  printf("balloc: first %d blocks have been allocated\n", used);
++  printf("balloc: first %d blocks have been allocated\n", used-1);
+   assert(used < BSIZE*8);
+   bzero(buf, BSIZE);
+   for(i = 0; i < used; i++){
+@@ -252,6 +253,7 @@ balloc(int used)
+ 
+ #define min(a, b) ((a) < (b) ? (a) : (b))
+ 
++#define TARGET_NUM (584)
+ void
+ iappend(uint inum, void *xp, int n)
+ {
+@@ -271,20 +273,41 @@ iappend(uint inum, void *xp, int n)
+     if(fbn < NDIRECT){
+       if(xint(din.addrs[fbn]) == 0){
+         din.addrs[fbn] = xint(freeblock++);
++        if (freeblock==TARGET_NUM) {
++          printf("find %d in NDIRECT with inum %d\n",TARGET_NUM,inum);
++        }
+       }
+       x = xint(din.addrs[fbn]);
+     } else {
+       if(xint(din.addrs[NDIRECT]) == 0){
+         din.addrs[NDIRECT] = xint(freeblock++);
++        if (freeblock==TARGET_NUM) {
++          printf("find %d in the last NDIRECT\n",TARGET_NUM);
++        }
+       }
+       rsect(xint(din.addrs[NDIRECT]), (char*)indirect);
+       if(indirect[fbn - NDIRECT] == 0){
++        if (freeblock==TARGET_NUM) {
++          printf("find %d in indirect[%d] with inum %d\n",TARGET_NUM,fbn - NDIRECT,inum);
++        }
+         indirect[fbn - NDIRECT] = xint(freeblock++);
+         wsect(xint(din.addrs[NDIRECT]), (char*)indirect);
+       }
+       x = xint(indirect[fbn-NDIRECT]);
+     }
++    /*
++    here
++    */
+     n1 = min(n, (fbn + 1) * BSIZE - off);
++    /*
++    when running `iappend(rootino, &de, sizeof(de));` not the first time.
++    */
++    // if ((fbn + 1) * BSIZE - off!=BSIZE){
++    //   fprintf(stderr, "\nfbn:%d off: %d ;n1 -> %d\n", fbn,off,(fbn + 1) * BSIZE - off);
++    // }
++    // if (fbn * BSIZE != off){
++    //   fprintf(stderr, "\n fbn * BSIZE:%d off: %d\n", fbn * BSIZE,off);
++    // }
+     rsect(x, buf);
+     bcopy(p, buf + off - (fbn * BSIZE), n1);
+     wsect(x, buf);
