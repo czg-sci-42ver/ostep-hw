@@ -6,3 +6,4 @@
 !*.sh
 !orig_xv6_tree.txt
 ![mM]akefile
+!*.h
