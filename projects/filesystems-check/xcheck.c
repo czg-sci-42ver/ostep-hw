@@ -16,7 +16,7 @@ based on mkfs.c `wsect(i, zeroes);`
 */
 #define IMG_SIZE (FSSIZE * BSIZE)
 #ifdef BITMAP_DEBUG
-#define BITMAP_LOG
+// #define BITMAP_LOG
 /*
 `int nbitmap = FSSIZE/(BSIZE*8) + 1;` bitmap blocks
 and each block is `write(fsfd, buf, BSIZE)` bytes
@@ -36,6 +36,9 @@ similar to the `iappend` structure.
 void read_inode_data(struct dinode inode, void *imgp, void *destp, int offset,
                      int size) {
   uint block_num = offset / BSIZE;
+  /*
+  this is due to fs.img small root inode block usage.
+  */
   assert(block_num==0);
   uint addr = 0;
   if (block_num < NDIRECT)
@@ -53,7 +56,14 @@ void read_inode_data(struct dinode inode, void *imgp, void *destp, int offset,
       addr = indirect[block_num];
     }
   }
-  memmove(destp, imgp + addr * BSIZE + offset % BSIZE, BSIZE);
+  /*
+  1. by `bcopy(p, buf + off - (fbn * BSIZE), n1);` which is based on block addr `buf`
+  so here `imgp + addr * BSIZE` to get the block addr
+  and then `offset % BSIZE` to get the relative address `off - (fbn * BSIZE)`.
+  2. due to `n1 = min(n, (fbn + 1) * BSIZE - off);` where `de` size < `BSIZE`
+    here use `size`.
+  */
+  memmove(destp, imgp + addr * BSIZE + offset % BSIZE, size);
 }
 
 void check_inode_type(int type) {

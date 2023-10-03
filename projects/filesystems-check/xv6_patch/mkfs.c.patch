@@ -12,7 +12,7 @@ index 09d790c..087956d 100644
  ASFLAGS = -m32 -gdwarf-2 -Wa,-divide
  # FreeBSD ld wants ``elf_i386_fbsd''
 diff --git a/mkfs.c b/mkfs.c
-index 8e011a7..627fa65 100644
+index 8e011a7..b20e868 100644
 --- a/mkfs.c
 +++ b/mkfs.c
 @@ -231,6 +231,7 @@ ialloc(ushort type)
@@ -40,7 +40,7 @@ index 8e011a7..627fa65 100644
  void
  iappend(uint inum, void *xp, int n)
  {
-@@ -271,20 +273,41 @@ iappend(uint inum, void *xp, int n)
+@@ -271,23 +273,48 @@ iappend(uint inum, void *xp, int n)
      if(fbn < NDIRECT){
        if(xint(din.addrs[fbn]) == 0){
          din.addrs[fbn] = xint(freeblock++);
@@ -66,9 +66,6 @@ index 8e011a7..627fa65 100644
        }
        x = xint(indirect[fbn-NDIRECT]);
      }
-+    /*
-+    here
-+    */
      n1 = min(n, (fbn + 1) * BSIZE - off);
 +    /*
 +    when running `iappend(rootino, &de, sizeof(de));` not the first time.
@@ -80,5 +77,15 @@ index 8e011a7..627fa65 100644
 +    //   fprintf(stderr, "\n fbn * BSIZE:%d off: %d\n", fbn * BSIZE,off);
 +    // }
      rsect(x, buf);
++    /*
++    here buf is based on one specific block
++    so needs to minus the block addr by `off - (fbn * BSIZE)`
++    */
      bcopy(p, buf + off - (fbn * BSIZE), n1);
      wsect(x, buf);
++    /*
++    just based on we having written n1 bytes.
++    */
+     n -= n1;
+     off += n1;
+     p += n1;
