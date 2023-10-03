@@ -224,18 +224,40 @@ int main(int argc, char *argv[]) {
         read_inode_data(inode, imgp, &de, off, sizeof(de));
         if (strcmp(de.name, ".") == 0) {
           count_dots++;
+          /*
+          > the . entry points to the directory itself.
+          */
           if (de.inum != i) {
             dir_error = true;
             break;
           }
+          /*
+          >  contains . and .. entries
+          */
         } else if (strcmp(de.name, "..") == 0) {
           count_dots++;
           if (i == ROOTINO && de.inum == ROOTINO)
             root_exist = true;
         }
+        /*
+        > at least one directory
+        */
         inode_dir[de.inum] = 1;
+        /*
+        `din.nlink = xshort(1);` and no other reference in mkfs
+        when compiled by `./mkfs fs.img README $(UPROGS)`.
+        */
+        if(de.inum !=0 && inodes[de.inum].nlink!=1){
+          printf("inum %d nlink %d\n",de.inum,inodes[de.inum].nlink);
+        }
+        /*
+        error 11
+        */
         if (inodes[de.inum].type == T_FILE)
           inodes[de.inum].nlink--;
+        /*
+        error 12
+        */
         else if (inodes[de.inum].type == T_DIR && i != de.inum)
           dir_links[de.inum]++;
       }
@@ -275,6 +297,10 @@ int main(int argc, char *argv[]) {
   }
 
   for (int j = ROOTINO; j < sb.ninodes; j++) {
+    /*
+    here not use bitmap due to non-strict `balloc(freeblock);`
+    See "assumes all the block before the data blocks are used".
+    */
     if (inodes[j].type != 0 && inode_dir[j] == 0) { // error 9
       fprintf(stderr,
               "ERROR: inode marked use but not found in a directory.\n");
