@@ -15,6 +15,8 @@
 based on mkfs.c `wsect(i, zeroes);`
 */
 #define IMG_SIZE (FSSIZE * BSIZE)
+#define LOG_PARENT
+// #define LOG_TRACE
 #ifdef BITMAP_DEBUG
 // #define BITMAP_LOG
 /*
@@ -128,11 +130,17 @@ void check_address(uint addr, bool direct, uint data_start, uchar *bmap,
 }
 
 void trace_parent(void *img_ptr,struct dinode* inodes_ptr,int parent_inum,int leaf_dir_in_subtree){
+  #ifdef LOG_TRACE
+  printf("trace to parent %d\n",parent_inum);
+  #endif
   struct dinode inode=inodes_ptr[parent_inum];
   struct dirent de;
   int ret=0;
   for (int off = 0; off < inode.size; off += sizeof(de)) {
     read_inode_data(inode, img_ptr, &de, off, sizeof(de));
+    #ifdef LOG_TRACE
+    printf("find de (%d,%s)\n",de.inum,de.name);
+    #endif
     /*
     find a loop.
     1. here allow symbolic child link points to leaf_dir_in_subtree
@@ -141,7 +149,10 @@ void trace_parent(void *img_ptr,struct dinode* inodes_ptr,int parent_inum,int le
       fprintf(stderr, "ERROR: inaccessible directory exists.\n");
       exit(EXIT_FAILURE);
     }
-    if (strcmp(de.name, "..") == 0) {
+    if (strcmp(de.name, "..") == 0 && de.inum!=ROOTINO) {
+      #ifdef LOG_TRACE
+      printf("trace to parent's parent %d\n",de.inum);
+      #endif
       trace_parent(img_ptr, inodes_ptr, de.inum, leaf_dir_in_subtree);
     }
   }
@@ -279,13 +290,16 @@ int main(int argc, char *argv[]) {
               }
             }
             if(find==0){
+              #ifdef LOG_PARENT
+              printf("self inum %d with parent inum %d\n",i,de.inum);
+              #endif
               fprintf(stderr, "ERROR: parent directory mismatch.\n");
-              exit(EXIT_FAILURE);
+              // exit(EXIT_FAILURE);
             }
             /*
             trace to the root
             */
-            trace_parent(inodes,imgp,de.inum,i);
+            trace_parent(imgp,inodes,de.inum,i);
           }
         }
         /*

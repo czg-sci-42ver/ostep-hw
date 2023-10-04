@@ -16,6 +16,7 @@ based on mkfs.c `wsect(i, zeroes);`
 */
 #define IMG_SIZE (FSSIZE * BSIZE)
 #ifdef BITMAP_DEBUG
+#define LOG_PARENT
 // #define BITMAP_LOG
 /*
 `int nbitmap = FSSIZE/(BSIZE*8) + 1;` bitmap blocks
@@ -254,7 +255,13 @@ int main(int argc, char *argv[]) {
                 find=1;
               }
             }
-            assert(find==1);
+            if(find==0){
+              #ifdef LOG_PARENT
+              printf("self inum %d with parent inum %d\n",i,de.inum);
+              #endif
+              fprintf(stderr, "ERROR: parent directory mismatch.\n");
+              exit(EXIT_FAILURE);
+            }
           }
         }
         /*
